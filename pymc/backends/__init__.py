@@ -6,6 +6,7 @@ Available backends
 1. NumPy array (pymc.backends.NDArray)
 2. Text files (pymc.backends.Text)
 3. SQLite (pymc.backends.SQLite)
+4. HDFS (pymc.backends.HDFS)
 
 The NumPy arrays and text files both hold the entire trace in memory,
 whereas SQLite commits the trace to the database while sampling.
@@ -112,8 +113,11 @@ For specific examples, see pymc.backends.{ndarray,text,sqlite}.py.
 from pymc.backends.ndarray import NDArray
 from pymc.backends.text import Text
 from pymc.backends.sqlite import SQLite
+from pymc.backends.hdfs import HDFS
 
 _shortcuts = {'text': {'backend': Text,
                        'name': 'mcmc'},
               'sqlite': {'backend': SQLite,
-                         'name': 'mcmc.sqlite'}}
+                         'name': 'mcmc.sqlite'},
+              'hdfs': {'backend': HDFS,
+                        'name': 'mcmc.hdfs'}}
