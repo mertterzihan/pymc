@@ -17,6 +17,7 @@ strategies:
             sampling is completed,
   - `sqlite` : store data in a sqlite database,
   - `hdf5` : store data in a hdf5 file, using pytables.
+  - 'hdfs' : store data in a text file in HDFS
 
 Although what happens under the hood is very different from one backend to
 another, from the user perspective, there is no difference whatsoever. The only
@@ -40,12 +41,14 @@ __modules__ = [
     'sqlite',
     'hdf5',
     'hdf5ea',
-    "__test_import__"]
+    'hdfs',
+    "__test_import__",]
 
 from . import no_trace
 from . import txt
 from . import ram
 from . import pickle
+from . import hdfs
 
 try:
     from . import sqlite
