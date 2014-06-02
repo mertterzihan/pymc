@@ -139,11 +139,8 @@ class Database(base.Database):
 		'''
 		Save the sampler's state in a state.txt file
 		'''
-		oldstate = np.get_printoptions()
-		np.set_printoptions(threshold=1e6)
 		file_name = os.path.join(self._directory, 'state.txt')
-		print_(state, file_name=file_name, hdfs=self.hdfs)
-		np.set_printoptions(**oldstate)
+		print_state(state, file_name=file_name, hdfs=self.hdfs)
 
 def load(dirname, host='localhost', port='50070', user_name=None):
 	'''
@@ -243,23 +240,28 @@ def save_nparray_to_hdfs(fname, X, hdfs):
 	for row in X:	
 		hdfs.append_file(fname, asbytes(format % tuple(row) + newline))
 
-def print_(*args, **kwargs):
+def print_state(*args, **kwargs):
 	'''
 	Editing six.print_ to make it work with HDFS
 	'''
 	file_name = kwargs.pop("file_name", None)
 	hdfs = kwargs.pop("hdfs", None)
-	if all([file_name, hdfs]):
+	if not all([file_name, hdfs]):
 		return
-	def write(data, hdfs):
+	def write(data, hdfs, firstline):
 		if not isinstance(data, basestring):
 			data = str(data)
-		hdfs.create_file(file_name, data, overwrite=True)
+		if firstline:
+			hdfs.create_file(file_name, data, overwrite=True)
+			firstline = False
+		else:
+			hdfs.append_file(file_name, data)
+		return firstline
 	end = "\n"
 	sep = " "
+	firstline = True
 	for i, arg in enumerate(args):
 		if i:
-			write(sep, hdfs)
-		write(arg, hdfs)
-	write(end, hdfs)
-
+			firstline = write(sep, hdfs, firstline)
+		firstline = write(arg, hdfs, firstline)
+	firstline = write(end, hdfs, firstline)

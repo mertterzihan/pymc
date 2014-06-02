@@ -2,7 +2,7 @@ import pymc as pm
 from pymc.examples import disaster_model
 
 # Where to save
-dbname = 'user/test3'
+dbname = 'user/test'
 
 # HDFS Config
 host = 'localhost'
