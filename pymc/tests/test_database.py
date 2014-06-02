@@ -21,6 +21,12 @@ try:
 except:
     pass
 
+# HDFS Config: Change Before Running!
+hdfsdir = 'user/testresults'
+host = 'localhost'
+port = '50070'
+user_name = 'test'
+
 
 class test_backend_attribution(TestCase):
 
@@ -267,6 +273,50 @@ class TestTxt(TestPickle):
 
     def load(self):
         return pymc.database.txt.load(os.path.join(testdir, 'Disaster.txt'))
+
+
+class TestHDFS(TestPickle):
+    name = 'hdfs'
+
+    @classmethod
+    def setUpClass(self):
+
+        self.S = pymc.MCMC(disaster_model,
+                           db='hdfs',
+                           dbname=os.path.join(hdfsdir, 'Disaster.hdfs'),
+                           host=host,
+                           port=port,
+                           user_name=user_name)
+
+    def load(self):
+        return pymc.database.hdfs.load(os.path.join(hdfsdir, 'Disaster.hdfs'), 
+                                       host=host, 
+                                       port=port, 
+                                       user_name=user_name)
+
+    def test_nd(self):
+        M = MCMC(
+            [self.NDstoch()],
+            db=self.name,
+            dbname=os.path.join(hdfsdir,
+                                'ND.' + self.name),
+            host=host,
+            port=port,
+            user_name=user_name)
+        M.sample(10, progress_bar=0)
+        a = M.trace('nd')[:]
+        assert_equal(a.shape, (10, 2, 2))
+        db = getattr(
+            pymc.database,
+            self.name).load(
+                os.path.join(
+                    hdfsdir,
+                    'ND.' +
+                    self.name),
+                host=host,
+                port=port,
+                user_name=user_name)
+        assert_equal(db.trace('nd')[:], a)
 
 
 class TestSqlite(TestPickle):
