@@ -63,10 +63,16 @@ class Trace(ram.Trace):
 		chain : int
 			The chain index
 		'''
-		path = os.path.join(
-            self.db._directory,
-            self.db.get_chains()[chain],
-            self.name + '.txt')
+		if self.db.chainFile is not -1:
+			path = os.path.join(
+	            self.db._directory,
+	            CHAIN_NAME % self.db.chainFile,
+	            self.name + '.txt')
+		else:
+			path = os.path.join(
+	            self.db._directory,
+	            self.db.get_chains()[chain],
+	            self.name + '.txt')
 		arr = self.gettrace(chain=chain)
 		self.db.hdfs.create_file(path, '# Variable: %s\n' % self.name, overwrite=True)
 		self.db.hdfs.append_file(path, '# Sample shape: %s\n' % str(arr.shape))
@@ -79,7 +85,7 @@ class Database(base.Database):
 	HDFS Database class
 	'''
 
-	def __init__(self, dbname=None, host='localhost', port='50070', user_name=None):
+	def __init__(self, dbname=None, hdfs_host='localhost', port='50070', user_name=None, chainFile=-1):
 		'''
 		Create HDFS Database
 
@@ -88,7 +94,7 @@ class Database(base.Database):
 		dbname : string
 			Name of directory where the traces are stored without a 
 			leading '/'
-		host : str
+		hdfs_host : str
 			The IP address or hostname of the HDFS namenode. By default,
 			it is 'localhost'
 		port : str
@@ -101,11 +107,12 @@ class Database(base.Database):
 		self.__name__ = 'hdfs'
 		self._directory = dbname
 		self.__Trace__ = Trace
-		self.hdfs = PyWebHdfsClient(host=host, port=port, user_name=user_name)
+		self.hdfs = PyWebHdfsClient(host=hdfs_host, port=port, user_name=user_name)
 
 		self.trace_names = []
 		self._traces = {}
 		self.chains = 0
+		self.chainFile = chainFile
 
 		try:
 			self.hdfs.list_dir(self._directory)
@@ -130,7 +137,11 @@ class Database(base.Database):
 		'''
 		Create folder to store simulation results
 		'''
-		dir = os.path.join(self._directory, CHAIN_NAME % self.chains)
+		if self.chainFile is not -1:
+			chainNum = self.chainFile
+		else:
+			chainNum = self.chains
+		dir = os.path.join(self._directory, CHAIN_NAME % chainNum)
 		self.hdfs.make_dir(dir)
 
 		base.Database._initialize(self, funs_to_tally, length)
@@ -141,6 +152,7 @@ class Database(base.Database):
 		'''
 		file_name = os.path.join(self._directory, 'state.txt')
 		print_state(state, file_name=file_name, hdfs=self.hdfs)
+
 
 def load(dirname, host='localhost', port='50070', user_name=None):
 	'''
@@ -165,7 +177,7 @@ def load(dirname, host='localhost', port='50070', user_name=None):
 	try:
 		hdfs.list_dir(dirname)
 	except FileNotFound:
-		raise AttributeError('No txt database named %s' % dirname)
+		raise AttributeError('No hdfs database named %s' % dirname)
 	db = Database(dirname, host=host, port=port, user_name=user_name)
 	chain_folders = [os.path.join(dirname, c) for c in db.get_chains()]
 	db.chains = len(chain_folders)
