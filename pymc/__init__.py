@@ -32,6 +32,7 @@ from .distributions import *
 from .Model import *
 from .StepMethods import *
 from .MCMC import *
+from .MCMCMultiChain import *
 from .NormalApproximation import *
 
 
