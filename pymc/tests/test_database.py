@@ -22,10 +22,10 @@ except:
     pass
 
 # HDFS Config: Change Before Running!
-hdfsdir = 'user/testresults'
-host = 'localhost'
+hdfsdir = 'user/mert.terzihan/unittest/test4/hdfs'
+host = 'bottou01-10g.pa.cloudera.com'
 port = '50070'
-user_name = 'test'
+user_name = 'mert.terzihan'
 
 
 class test_backend_attribution(TestCase):
@@ -284,7 +284,7 @@ class TestHDFS(TestPickle):
         self.S = pymc.MCMC(disaster_model,
                            db='hdfs',
                            dbname=os.path.join(hdfsdir, 'Disaster.hdfs'),
-                           host=host,
+                           hdfs_host=host,
                            port=port,
                            user_name=user_name)
 
@@ -300,7 +300,7 @@ class TestHDFS(TestPickle):
             db=self.name,
             dbname=os.path.join(hdfsdir,
                                 'ND.' + self.name),
-            host=host,
+            hdfs_host=host,
             port=port,
             user_name=user_name)
         M.sample(10, progress_bar=0)

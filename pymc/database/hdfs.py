@@ -178,7 +178,7 @@ def load(dirname, host='localhost', port='50070', user_name=None):
 		hdfs.list_dir(dirname)
 	except FileNotFound:
 		raise AttributeError('No hdfs database named %s' % dirname)
-	db = Database(dirname, host=host, port=port, user_name=user_name)
+	db = Database(dirname, hdfs_host=host, port=port, user_name=user_name)
 	chain_folders = [os.path.join(dirname, c) for c in db.get_chains()]
 	db.chains = len(chain_folders)
 
