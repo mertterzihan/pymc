@@ -10,12 +10,12 @@ import warnings
 import numpy as np
 
 spark_host = 'local[4]'
-spark_home = '/Users/mert.terzihan/Documents/Spark/spark'
-model_file = '/Users/mert.terzihan/Documents/pymc/pymc/examples/disaster_model.py'
-dbname = 'user/mert.terzihan/unittest/test4/spark'
-hdfs_host = 'bottou01-10g.pa.cloudera.com'
+spark_home = '$SPARK_HOME'
+model_file = '$PYMC_HOME/pymc/examples/disaster_model.py'
+dbname = 'user/unittest/spark'
+hdfs_host = 'localhost'
 port = '50070'
-user_name = 'mert.terzihan'
+user_name = 'test'
 
 class test_MCMCSpark_withHDFS(TestCase):
 	@classmethod

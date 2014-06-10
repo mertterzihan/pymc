@@ -22,10 +22,10 @@ except:
     pass
 
 # HDFS Config: Change Before Running!
-hdfsdir = 'user/mert.terzihan/unittest/test4/hdfs'
-host = 'bottou01-10g.pa.cloudera.com'
+hdfsdir = 'user/unittest/hdfs'
+host = 'localhost'
 port = '50070'
-user_name = 'mert.terzihan'
+user_name = 'test'
 
 
 class test_backend_attribution(TestCase):
