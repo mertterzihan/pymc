@@ -9,10 +9,12 @@ For an example usage, please look at pymc/examples/disaster_model_spark.py
 __all__ = ['MCMCSpark']
 
 from .MCMCMultiChain import MCMCMultiChain
+from pymc.database import ram
 
 import numpy as np 
 import os
 from pyspark import SparkContext
+from pymc import six
 
 class MCMCSpark():
 	'''
@@ -74,6 +76,7 @@ class MCMCSpark():
 		'''
 		Starts Spark jobs that initialize traces, run sampling loop, clean up afterwards
 		Similar to MCMC.sample() in terms of parameters
+		Returns a RAM database to the user
 		'''
 		db = self.db
 		name = self.name
@@ -92,8 +95,29 @@ class MCMCSpark():
 			m.sample(iter, burn, thin, tune_interval, tune_throughout,
         		save_interval, burn_till_tuned, stop_tuning_after,
             	verbose, progress_bar)
+			container = {}
+			for tname in m.db._traces:
+				container[tname] = m.db._traces[tname]._trace
+			container['_state_'] = m.get_state()
+			return container
 
-		self.sc.parallelize(xrange(self.nJobs)).foreach(sample_on_spark)
+		container = self.sc.parallelize(xrange(self.nJobs)).map(sample_on_spark).collect()
+		data = {}
+		for chain, traces in enumerate(container):
+			for name in traces.keys():
+				if chain == 0:
+					data[name] = {}
+				if name != '_state_':
+					data[name][chain] = traces[name][0]
+
+		db = ram.Database('MCMCSparkRamDatabase')
+		db.chains = self.nJobs
+		for name, values in six.iteritems(data):
+			db._traces[name] = ram.Trace(name=name, value=values, db=db)
+			setattr(db, name, db._traces[name])
+		db._state_ = container[self.nJobs-1]['_state_']
+
+		return db
 
 
 def load_data(file_name, shape=None, delimiter=','):

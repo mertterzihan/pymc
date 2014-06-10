@@ -21,4 +21,6 @@ if __name__ == "__main__":
 	nJobs=10
 
 	m = MCMCSpark(db=db, dbname=dbname, model_file=model_file, spark_home=spark_home, spark_host=master, nJobs=nJobs, hdfs_host=hdfs_host, port=port, user_name=user_name)
-	m.sample(10)
+	db = m.sample(10)
+	print db.trace('early_mean')[:]
+	print db.trace('early_mean', chain=0)[:]
