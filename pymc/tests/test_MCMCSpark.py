@@ -30,12 +30,13 @@ class test_MCMCSpark_withHDFS(TestCase):
 			assert_array_equal(db.trace('early_mean', chain=chain)[:].shape, (5,))
 			assert_equal(db.trace('early_mean', chain=chain).length(), 5)
 			assert_equal(db.trace('early_mean', chain=chain)[:].__class__, np.ndarray)
+			assert_equal(db.trace('early_mean', chain)._chain, chain)
 
 		assert_array_equal(db.trace('early_mean')[:].shape, (5,))
 		assert_equal(db.trace('early_mean').length(), 5)
 		assert_array_equal(db.trace('early_mean', chain=None)[:].shape, (50,))
 		assert_equal(db.trace('early_mean').length(chain=None), 50)
-		assert_equal(db.trace('early_mean').gettrace(slicing=slice(1, 2)), db.early_mean.trace[1])
+		assert_equal(db.trace('early_mean').gettrace(slicing=slice(1, 2)), db.trace('early_mean')[1])
 
 if __name__ == '__main__':
 	original_filters = warnings.filters[:]
