@@ -10,6 +10,7 @@ __all__ = ['MCMCSpark']
 
 from .MCMC import MCMC
 from pymc.database import spark
+import re
 
 
 import numpy as np 
@@ -180,11 +181,11 @@ class MCMCSpark():
 		roundto : int
 			The number of digits to round posterior statistics.
 		'''
-		
+		pattern = re.compile(".*adaptive_scale_factor|deviance")
 		if variables is None:
-			variables = self._variables_to_tally
+			variables = [v for v in self._variables_to_tally if not pattern.match(v)]
 		else:
-			variables = [v for v in variables if v in self._variables_to_tally]
+			variables = [v for v in variables if (v in self._variables_to_tally) and (not pattern.match(v))]
 		for variable in variables:
 			statdict = self.db._traces[variable].stats(alpha=alpha, start=start, 
 													   batches=batches, chain=chain)
@@ -253,10 +254,11 @@ class MCMCSpark():
 		quantiles : tuple or list
 			The desired quantiles to be calculated. Defaults to (2.5, 25, 50, 75, 97.5)
 		'''
+		pattern = re.compile(".*adaptive_scale_factor|deviance")
 		if variables is None:
-			variables = self._variables_to_tally
+			variables = [v for v in self._variables_to_tally if not pattern.match(v)]
 		else:
-			variables = [v for v in self.variables if v in variables]
+			variables = [v for v in variables if (v in self._variables_to_tally) and (not pattern.match(v))]
 
 		stat_dict = {}
 
