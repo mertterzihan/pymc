@@ -42,6 +42,7 @@ __modules__ = [
     'hdf5',
     'hdf5ea',
     'hdfs',
+    'spark',
     "__test_import__",]
 
 from . import no_trace
@@ -49,6 +50,7 @@ from . import txt
 from . import ram
 from . import pickle
 from . import hdfs
+from . import spark
 
 try:
     from . import sqlite

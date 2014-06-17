@@ -7,7 +7,7 @@ Store the traces on Spark RDDs as dictionaries
 import numpy as np
 from pymc.utils import make_indices, calc_min_interval
 
-__all__ = ['Trace', 'Database']
+__all__ = ['Trace', 'Database', 'loadm']
 
 class Trace():
 	'''
@@ -373,3 +373,10 @@ class Database():
 			return x
 		new_rdd = self.rdd.map(truncate_helper).cache()
 		self.rdd = new_rdd
+
+def load(spark_context, dbname, minPartitions=None):
+	data_list = spark_context.pickleFile(name=dbname, minPartitions=minPartitions).collect()
+	rdd = spark_context.parallelize(data_list).cache()
+	vars_to_tally = rdd.map(lambda x: x[1].keys()).first()
+	vars_to_tally.remove('_state_')
+	return Database(rdd, vars_to_tally)

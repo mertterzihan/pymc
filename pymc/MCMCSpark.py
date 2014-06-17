@@ -18,6 +18,10 @@ import os
 from pyspark import SparkContext
 from pymc import six
 import copy
+import itertools
+import datetime
+import os
+from numpy.compat import asbytes, asstr
 print_ = six.print_
 
 Supported_Backends = ['spark', 'hdfs']
@@ -59,6 +63,9 @@ class MCMCSpark():
 		if nJobs < 1:
 			nJobs = 1
 		self._check_database_backend(db)
+		self.save_to_hdfs = False
+		if db == 'hdfs':
+			self.save_to_hdfs = True
 		if self.save_to_hdfs:
 			self.dbname = kwargs.pop("dbname", None)
 			if self.dbname is None:
@@ -109,12 +116,13 @@ class MCMCSpark():
 			return (nJob, container)
 
 		rdd = self.sc.parallelize(xrange(self.nJobs)).map(sample_on_spark).cache()
-		vars_to_tally = copy.copy(rdd.map(lambda x: x[1].keys())).first()
+		#vars_to_tally = copy.copy(rdd.map(lambda x: x[1].keys())).first()
+		vars_to_tally = rdd.map(lambda x: x[1].keys()).first()
 		vars_to_tally.remove('_state_')
 		self._variables_to_tally = set(vars_to_tally)
 		self._assign_database_backend(rdd, vars_to_tally)
-		#if self.save_to_hdfs:
-			#rdd.map().saveAsTextFile()
+		if self.save_to_hdfs:
+			self.save_as_pickle_object(self.dbname)
 
 	def _check_database_backend(self, db):
 		'''
@@ -266,6 +274,137 @@ class MCMCSpark():
 			stat_dict[variable] = self.trace(variable).stats(alpha=alpha, start=start,
 															 batches=batches, chain=chain, quantiles=quantiles)
 		return stat_dict
+
+	def write_csv(self, filename, variables=None, alpha=0.05, start=0, batches=100,
+				  chain=None, quantiles=(2.5, 25, 50, 75, 97.5)):
+		'''
+		Save summary statistics to a csv table on local machine
+
+		Parameters
+		----------
+		filename: str
+			Filename to save output
+		variables : list of str
+			List of variable names to be summarized. By default it summarizes every variable
+		alpha : float
+			The alpha level for generating posterior intervals. Defaults to 0.05
+		start : int
+			The starting index from which to summarize chain. Defaults to zero
+		batches : int 
+			Batch size for calculating standard deviation for non-independent samples.
+			Defaults to 100
+		chain : int
+			The index for which chain to summarize. Defaults to None (all chains)
+		'''
+		if filename.find('.') == -1:
+			filename += '.csv'
+		outfile = open(filename, 'w')
+		header = 'Parameter, Mean, SD, MC Error, Lower 95% HPD, Upper 95% HPD, '
+		header += ', '.join(['q%s' % i for i in quantiles])
+		outfile.write(header + '\n')
+		stats = self.stats(variables=variables, alpha=alpha, start=start, 
+						   batches=batches, chain=chain, quantiles=quantiles)
+		if variables is None:
+			variables = sorted(stats.keys())
+		buffer = str()
+		for param in variables:
+			values = stats[param]
+			try:
+				shape = values['mean'].shape
+				indices = list(itertools.product(*[range(i) for i in shape]))
+				for i in indices:
+					buffer += self._csv_str(param, values, quantiles, i)
+			except AttributeError:
+				buffer += self._csv_str(param, values, quantiles)
+		outfile.write(buffer)
+		outfile.close()
+
+	def _csv_str(self, param, stats, quantiles, index=None):
+		'''
+		Helper function for write_csv
+		'''
+		buffer = param
+		if not index:
+			buffer += ', '
+		else:
+			buffer += '_' + '_'.join([str(i) for i in index]) + ', '
+
+		for stat in ('mean', 'standard deviation', 'mc error'):
+			buffer += str(stats[stat][index]) + ', '
+		iindex = [key.split()[-1] for key in stats.keys()].index('interval')
+		interval = list(stats.keys())[iindex]
+		buffer += ', '.join(stats[interval][index].astype(str))
+		qvalues = stats['quantiles']
+		for q in quantiles:
+			buffer += ', ' + str(qvalues[q][index])
+		return buffer + '\n'
+
+	def save_as_pickle_object(self, filename, batch_size=10, chain=None):
+		'''
+		Save the data to HDFS as pickle objects
+		Requires Spark v1.0
+
+		Parameters
+		----------
+		filename : str
+			Name of the file to save the object
+		batch_size : int
+			Batch size for serializing the data
+		chain : int
+			The index for which chain to summarize. Defaults to None (all chains)
+		'''
+		if chain is None:
+			self.db.rdd.saveAsPickleFile(filename, batch_size)
+		else:
+			if chain < 0:
+				chain = xrange(self.db.chains)[chain]
+			self.db.rdd.filter(lambda x: x[0] == chain).saveAsPickleFile(filename, batch_size)
+
+	def save_as_txt_file(self, path, chain=None):
+		'''
+		Save the data to HDFS as txt files
+		
+		Parameters
+		----------
+		path : str
+			Name of the file to save the data
+		chain : int
+			The index for which chain to summarize. Defaults to None (all chains)
+		'''
+		temp_rdd = self.db.rdd
+		if chain is not None:
+			if chain < 0:
+				chain = xrange(self.db.chains)[chain]
+			temp_rdd = self.db.rdd.filter(lambda x: x[0]==chain).cache()
+		for v in self._variables_to_tally:
+			def save_mapper(x):
+				data = '# Variable: %s\n' % v
+				data += '# Sample shape: %s\n' % str(x.shape)
+				data += '# Date: %s\n' % datetime.datetime.now()
+				X = x.reshape((-1, x[0].size))
+				fmt = '%.18e'
+				delimiter = ','
+				newline = '\n'
+				if isinstance(fmt, bytes):
+					fmt = asstr(fmt)
+				delimiter = asstr(delimiter)
+				X = np.asarray(X)
+				if X.ndim == 1:
+					if X.dtype.names is None:
+						X = np.atleast_2d(X).T
+						ncol = 1
+					else:
+						ncol = len(X.dtype.descr)
+				else:
+					ncol = X.shape[1]
+				n_fmt_chars = fmt.count('%')
+				fmt = [fmt, ] * ncol
+				format = delimiter.join(fmt)
+				for row in X:
+					data += format % tuple(row) + newline
+				return data
+			temp_rdd.map(lambda x: x[1][v]).map(save_mapper).saveAsTextFile(os.path.join(path, v))
+		temp_rdd.map(lambda x: x[1]['_state_']).saveAsTextFile(os.path.join(path, 'state'))
 
 	def remember(self, chain=-1, trace_index=None):
 		pass
