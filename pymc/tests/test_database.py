@@ -284,7 +284,7 @@ class TestHDFS(TestPickle):
         self.S = pymc.MCMC(disaster_model,
                            db='hdfs',
                            dbname=os.path.join(hdfsdir, 'Disaster.hdfs'),
-                           hdfs_host=host,
+                           host=host,
                            port=port,
                            user_name=user_name)
 
@@ -300,7 +300,7 @@ class TestHDFS(TestPickle):
             db=self.name,
             dbname=os.path.join(hdfsdir,
                                 'ND.' + self.name),
-            hdfs_host=host,
+            host=host,
             port=port,
             user_name=user_name)
         M.sample(10, progress_bar=0)
