@@ -6,6 +6,8 @@ Store the traces on Spark RDDs as dictionaries
 
 import numpy as np
 from pymc.utils import make_indices, calc_min_interval
+import os
+import re
 
 __all__ = ['Trace', 'Database', 'loadm']
 
@@ -374,9 +376,82 @@ class Database():
 		new_rdd = self.rdd.map(truncate_helper).cache()
 		self.rdd = new_rdd
 
-def load(spark_context, dbname, minPartitions=None):
-	data_list = spark_context.pickleFile(name=dbname, minPartitions=minPartitions).collect()
+def load_pickle(spark_context, dbname):
+	'''
+	Create a Database instance from the data stored in a directory on HDFS, where
+	data has been stored as a Pickle object
+
+	Parameters
+	----------
+	spark_context : SparkContext
+		A SparkContext instance that will be used to load data
+	dbname : str
+		Location of the Pickle object on HDFS
+	'''
+	data_list = spark_context.pickleFile(name=dbname).collect()
 	rdd = spark_context.parallelize(data_list).cache()
 	vars_to_tally = rdd.map(lambda x: x[1].keys()).first()
 	vars_to_tally.remove('_state_')
 	return Database(rdd, vars_to_tally)
+
+def load_txt(spark_context, dbname):
+	'''
+	Create a Database instance from the data stored in a directory on HDFS, where
+	data has been stored in txt files
+
+	Parameters
+	----------
+	spark_context : SparkContext
+		A SparkContext instance that will be used to load data
+	dbname : str
+		Location of the Pickle object on HDFS
+	'''
+	dirs = os.listdir(dbname)
+	pattern = re.compile("^\.")
+	dirs = [d for d in dirs if not pattern.match(d)]
+	rdd = None
+	for data_dir in dirs:
+		if data_dir == 'state':
+			def load_state_mapper(x):
+				from numpy import array
+				x = x[1]
+				data_stream = x.split('\n')
+				data_list = list()
+				for line in data_stream[:-1]:
+					data = eval(line)
+					data_list.append((data[0], ('_state_', data[1])))
+				return data_list
+			load_rdd = spark_context.wholeTextFiles(os.path.join(dbname, data_dir)).flatMap(load_state_mapper)
+		else:
+			def load_mapper(x):
+				x = x[1]
+				data_stream = x.split('\n')
+				line = 0
+				data_list = list()
+				while line < len(data_stream)-1:
+					from StringIO import StringIO
+					var_name = str(data_stream[line][12:])
+					line += 1
+					chain = eval(data_stream[line][9:])
+					line += 1
+					shape = eval(data_stream[line][16:])
+					line += 1
+					length = shape[0] #reduce(lambda x,y: x*y, shape)
+					line += 1
+					data = '\n'.join(data_stream[line:line+length])
+					data = np.loadtxt(StringIO(data), delimiter=',').reshape(shape)
+					line += length + 1
+					data_list.append((chain, (var_name, data)))
+				return data_list
+			load_rdd = spark_context.wholeTextFiles(os.path.join(dbname, data_dir)).flatMap(load_mapper)
+		if rdd is None:
+			rdd = load_rdd
+		else:
+			rdd = rdd.join(load_rdd).map(lambda x: (x[0], (x[1][0]+x[1][1])))
+	def map_helper(x):
+		d = dict()
+		for i, item in enumerate(x[1]):
+			if i % 2 == 0:
+				d[item] = x[1][i+1]
+		return (x[0], d)
+	return rdd.map(map_helper).cache()

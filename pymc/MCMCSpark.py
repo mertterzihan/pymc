@@ -43,22 +43,10 @@ class MCMCSpark():
 		- nJobs : integer
 			Number of Spark jobs that will run MCMC
 		- **kwarg : dict
-			- spark_host : str
-				Cluster URL to connect to
-			- spark_home : str
-				Location where Spark is installed on cluster nodes
-			- model_file : str
-				Location of the file that defines model to be loaded
-			- obs_files : str
-				Location of the files that defines observations. By default it is None.
+			- spark_context : SparkContext
+				A SparkContext instance that will be used to load data
 			- dbname : str
-				Location on HDFS that the traces will be saved without a leading '/'
-			- hdfs_host : str
-				The IP address or host name of the HDFS namenode
-			- port : str
-				The port number for WebHDFS on namenode
-			- user_name : str
-				WebHDFS user name used for authentication
+				Optional, location to save the files on HDFS
 		'''
 		if nJobs < 1:
 			nJobs = 1
@@ -116,13 +104,12 @@ class MCMCSpark():
 			return (nJob, container)
 
 		rdd = self.sc.parallelize(xrange(self.nJobs)).map(sample_on_spark).cache()
-		#vars_to_tally = copy.copy(rdd.map(lambda x: x[1].keys())).first()
 		vars_to_tally = rdd.map(lambda x: x[1].keys()).first()
 		vars_to_tally.remove('_state_')
 		self._variables_to_tally = set(vars_to_tally)
 		self._assign_database_backend(rdd, vars_to_tally)
 		if self.save_to_hdfs:
-			self.save_as_pickle_object(self.dbname)
+			self.save_as_txt_file(self.dbname)
 
 	def _check_database_backend(self, db):
 		'''
@@ -379,9 +366,10 @@ class MCMCSpark():
 		for v in self._variables_to_tally:
 			def save_mapper(x):
 				data = '# Variable: %s\n' % v
-				data += '# Sample shape: %s\n' % str(x.shape)
+				data += '# Chain: %s\n' %x[0]
+				data += '# Sample shape: %s\n' % str(x[1].shape)
 				data += '# Date: %s\n' % datetime.datetime.now()
-				X = x.reshape((-1, x[0].size))
+				X = x[1].reshape((-1, x[1][0].size))
 				fmt = '%.18e'
 				delimiter = ','
 				newline = '\n'
@@ -403,8 +391,8 @@ class MCMCSpark():
 				for row in X:
 					data += format % tuple(row) + newline
 				return data
-			temp_rdd.map(lambda x: x[1][v]).map(save_mapper).saveAsTextFile(os.path.join(path, v))
-		temp_rdd.map(lambda x: x[1]['_state_']).saveAsTextFile(os.path.join(path, 'state'))
+			temp_rdd.map(lambda x: (x[0], x[1][v])).map(save_mapper).saveAsTextFile(os.path.join(path, v))
+		temp_rdd.map(lambda x: (x[0], x[1]['_state_'])).saveAsTextFile(os.path.join(path, 'state'))
 
 	def remember(self, chain=-1, trace_index=None):
 		pass
