@@ -84,15 +84,11 @@ class MCMCSpark():
 		calc_deviance = self.calc_deviance
 		kwargs = self.kwargs
 		#model_file = self.model_file
-		total_jobs = self.nJobs
 		input_model = self.input
 
 		def sample_on_spark(nJob):
 			# model_module = os.path.splitext(os.path.basename(model_file))[0]
 			# imported_module = __import__(model_module)
-			final_job = False
-			if total_jobs-1 == nJob:
-				final_job = True
 			m = MCMC(input_model, db='ram', name=name, calc_deviance=calc_deviance, **kwargs)
 			m.sample(iter, burn, thin, tune_interval, tune_throughout,
         		save_interval, burn_till_tuned, stop_tuning_after,
