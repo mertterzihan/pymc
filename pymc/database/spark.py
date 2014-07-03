@@ -9,7 +9,7 @@ from pymc.utils import make_indices, calc_min_interval
 import os
 import re
 
-__all__ = ['Trace', 'Database', 'loadm']
+__all__ = ['Trace', 'Database', 'load_pickle', 'load_txt']
 
 class Trace():
 	'''
