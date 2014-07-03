@@ -8,7 +8,7 @@ __all__ = ['DistributedMCMC']
 
 from .MCMCSpark import MCMCSpark
 from .MCMC import MCMC
-from pymc.database import spark
+from pymc.database import distributed_spark
 
 class DistributedMCMC(MCMCSpark):
 
@@ -76,12 +76,28 @@ class DistributedMCMC(MCMCSpark):
 				container['_state_'] = m.get_state()
 				return (data[0], data[1], container)
 
-		rdd = self.sc.textFile(observation_file, minPartitions=nJobs).cache().glom().map(lambda x: (int(x[0][0]), x)).cache()
+		'''rdd = self.sc.textFile(observation_file, minPartitions=nJobs).cache().glom().map(lambda x: (int(x[0][0]), x)).cache()
 		keys = sorted(rdd.map(lambda x: x[0]).collect())
 		d = dict()
 		for n, k in enumerate(keys):
 			d[k] = n
-		rdd = rdd.map(lambda x: (d[x[0]], x[1])).cache()
+		rdd = rdd.map(lambda x: (d[x[0]], x[1])).cache()'''
+		def generate_keys(splitIndex, iterator):
+			for i in iterator:
+				yield (splitIndex,i)
+		def generate_lists(a, b):
+			if isinstance(a, list):
+				if isinstance(b, list):
+					return a + b
+				else:
+					a.append(b)
+					return a
+			elif isinstance(b, list):
+				b.append(a)
+				return b
+			else:
+				return list([a, b])
+		rdd = self.sc.textFile(observation_file, minPartitions=nJobs).mapPartitionsWithIndex(generate_keys).reduceByKey(generate_lists).cache()
 		current_iter = 0
 		while current_iter < iter:
 			if self.global_update is not None:
@@ -91,9 +107,21 @@ class DistributedMCMC(MCMCSpark):
 			rdd = rdd.map(sample_on_spark).cache()
 			current_iter += self.local_iter
 		rdd = rdd.map(lambda x: (x[0], x[2])).cache()
-		vars_to_tally = rdd.map(lambda x: x[1].keys()).first()
-		vars_to_tally.remove('_state_')
-		self._variables_to_tally = set(vars_to_tally)
+		def extract_var_names(a,b):
+			if isinstance(a, set):
+				if isinstance(b, set):
+					a.update(b)
+				else:
+					a.add(b)
+				return a
+			elif isinstance(b, set):
+				b.add(a)
+				return b
+			else:
+				s = set([a,b])
+		vars_to_tally = rdd.flatMap(lambda x: filter(lambda i: i!='_state_', x[1].keys())).reduce(extract_var_names)
+		# self._variables_to_tally = set(vars_to_tally)
+		self._variables_to_tally = vars_to_tally
 		self._assign_database_backend(rdd, vars_to_tally)
 		if self.save_to_hdfs:
 			self.save_as_txt_file(self.dbname)
@@ -113,5 +141,19 @@ class DistributedMCMC(MCMCSpark):
 			vars_to_tally.remove('_state_')
 			self.db = spark.Database(db, vars_to_tally)
 			self.restore_sampler_state()'''
-		self.db = spark.Database(db, vars_to_tally)
+		self.db = distributed_spark.Database(db, vars_to_tally)
+
+	def save_as_txt_file(self, path, chain=None):
+		'''
+		Save the data to HDFS as txt files
+
+		Parameters
+		----------
+		path : str
+			Name of the file to save the data
+		chain : int 
+			The index of the chain to be saved. Defaults to None (all chains)
+		'''
+		pass
+
 		
