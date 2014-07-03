@@ -47,7 +47,6 @@ class DistributedMCMC(MCMCSpark):
 				db.trace_names.append(trace_names)
 				return db
 
-			#if isinstance(data, tuple):
 			if len(data) == 3:
 				input_model = model_function(data[1], phi.value)
 				m = MCMC(input_model, db=load_ram_database(data[2]), name=name, calc_deviance=calc_deviance, **kwargs)
@@ -61,7 +60,6 @@ class DistributedMCMC(MCMCSpark):
 
 			# TODO: Local Update
 
-			#if isinstance(data, tuple):
 			if len(data) == 3:
 				import numpy as np
 				container = data[2]
@@ -76,12 +74,6 @@ class DistributedMCMC(MCMCSpark):
 				container['_state_'] = m.get_state()
 				return (data[0], data[1], container)
 
-		'''rdd = self.sc.textFile(observation_file, minPartitions=nJobs).cache().glom().map(lambda x: (int(x[0][0]), x)).cache()
-		keys = sorted(rdd.map(lambda x: x[0]).collect())
-		d = dict()
-		for n, k in enumerate(keys):
-			d[k] = n
-		rdd = rdd.map(lambda x: (d[x[0]], x[1])).cache()'''
 		def generate_keys(splitIndex, iterator):
 			for i in iterator:
 				yield (splitIndex,i)
