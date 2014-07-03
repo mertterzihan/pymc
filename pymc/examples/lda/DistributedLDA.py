@@ -7,11 +7,15 @@ def model_function(data, global_param):
 	from pymc import Dirichlet, Categorical, Deterministic, Lambda, Stochastic
 	import math
 
-	total_topics = len(global_param[0])
-	topic_word_dist = global_param
+	#total_topics = len(global_param[0])
+	#topic_word_dist = global_param
 
 	beta = 0.1
+	total_vocab = 78
 	alpha = [beta for t in xrange(total_vocab)]
+	total_topics = 10
+	
+	rand_state = global_param
 
 	def log_beta(alpha):
     	return sum(math.lgamma(a) for a in alpha) - math.lgamma(sum(alpha))
@@ -21,7 +25,15 @@ def model_function(data, global_param):
 	    return kernel - log_beta(alpha) 
 
 	def phi_rand():
-		return topic_word_dist.popleft()
+		# return topic_word_dist.popleft()
+		import numpy.random
+		current_state = numpy.random.get_state()
+		numpy.random.set_state(rand_state)
+		beta_vector = [beta for t in xrange(total_vocab)]
+		phi_list = [numpy.random.dirichlet(beta_vector) for k in xrange(total_topics)]
+		rand_state = numpy.random.get_state()
+		numpy.random.set_state(current_state)
+		return phi_list
 
 	phi = Stochastic(logp=phi_logp,
 					 doc='Dirichlet prior for topic-word distributions',
@@ -58,13 +70,18 @@ def model_function(data, global_param):
 	return locals()
 
 def global_update():
-	from numpy.random import dirichlet
+	'''from numpy.random import dirichlet
 	beta = 0.1
 	total_vocab = 78
 	total_topics = 10
 	local_iter = 10
 	beta_vector = [beta for t in xrange(total_vocab)]
-	return [[dirichlet(beta_vector) for k in xrange(total_topics)] for i in local_iter]
+	return [[dirichlet(beta_vector) for k in xrange(total_topics)] for i in local_iter]'''
+	import numpy.random
+	numpy.random.seed(123456)
+	state = numpy.random.get_state()
+	return state
+
 
 from pymc.DistributedMCMC import DistributedMCMC
 
