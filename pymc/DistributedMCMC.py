@@ -48,10 +48,10 @@ class DistributedMCMC(MCMCSpark):
 				return db
 
 			if len(data) == 3:
-				input_model = model_function(data[1], phi.value)
+				input_model = model_function(data[1], global_param.value)
 				m = MCMC(input_model, db=load_ram_database(data[2]), name=name, calc_deviance=calc_deviance, **kwargs)
 			else:
-				input_model = model_function(data[1], phi.value)
+				input_model = model_function(data[1], global_param.value)
 				m = MCMC(input_model, db='ram', name=name, calc_deviance=calc_deviance, **kwargs)
 
 			m.sample(local_iter, burn, thin, tune_interval, tune_throughout,
@@ -94,7 +94,7 @@ class DistributedMCMC(MCMCSpark):
 		while current_iter < iter:
 			if self.global_update is not None:
 				param = global_update[1]()
-				phi = self.sc.broadcast(param)
+				global_param = self.sc.broadcast(param)
 				# exec(global_update[0] + ' = self.sc.broadcast(param)')
 			rdd = rdd.map(sample_on_spark).cache()
 			current_iter += self.local_iter
@@ -111,6 +111,7 @@ class DistributedMCMC(MCMCSpark):
 				return b
 			else:
 				s = set([a,b])
+				return s
 		vars_to_tally = rdd.flatMap(lambda x: filter(lambda i: i!='_state_', x[1].keys())).reduce(extract_var_names)
 		# self._variables_to_tally = set(vars_to_tally)
 		self._variables_to_tally = vars_to_tally
