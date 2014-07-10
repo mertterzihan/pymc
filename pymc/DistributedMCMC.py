@@ -49,7 +49,8 @@ class DistributedMCMC(MCMCSpark):
 
 			if len(data) == 3:
 				input_model = model_function(data[1], global_param.value)
-				m = MCMC(input_model, db=load_ram_database(data[2]), name=name, calc_deviance=calc_deviance, **kwargs)
+				index = data[2].index(None)
+				m = MCMC(input_model, db=load_ram_database(data[2][index-1]), name=name, calc_deviance=calc_deviance, **kwargs)
 			else:
 				input_model = model_function(data[1], global_param.value)
 				m = MCMC(input_model, db='ram', name=name, calc_deviance=calc_deviance, **kwargs)
@@ -62,21 +63,27 @@ class DistributedMCMC(MCMCSpark):
 
 			if len(data) == 3:
 				import numpy as np
-				container = data[2]
+				container_list = data[2]
+				index = container_list.index(None)
+				container = {}
 				for tname in m.db._traces:
-					container[tname] = np.concatenate((container[tname],m.trace(tname)[:]))
+					container[tname] = m.trace(tname)[:]
 				container['_state_'] = m.get_state()
-				return (data[0], data[1], container)
+				container_list[index] = container
+				return (data[0], data[1], container_list)
 			else:
+				container_list = [None]*(iter/local_iter)
 				container = {}
 				for tname in m.db._traces:
 					container[tname] = m.db._traces[tname]._trace[0]
 				container['_state_'] = m.get_state()
-				return (data[0], data[1], container)
+				container_list[0] = container
+				return (data[0], data[1], container_list)
 
 		def generate_keys(splitIndex, iterator):
 			for i in iterator:
 				yield (splitIndex,i)
+
 		def generate_lists(a, b):
 			if isinstance(a, list):
 				if isinstance(b, list):
@@ -112,7 +119,7 @@ class DistributedMCMC(MCMCSpark):
 			else:
 				s = set([a,b])
 				return s
-		vars_to_tally = rdd.flatMap(lambda x: filter(lambda i: i!='_state_', x[1].keys())).reduce(extract_var_names)
+		vars_to_tally = rdd.map(lambda x: x[1][0]).flatMap(lambda x: filter(lambda i: i!='_state_', x.keys())).reduce(extract_var_names)
 		# self._variables_to_tally = set(vars_to_tally)
 		self._variables_to_tally = vars_to_tally
 		self._assign_database_backend(rdd, vars_to_tally)

@@ -32,8 +32,8 @@ class Trace():
 		'''
 		tname = self.name
 		def truncate_helper(x):
-			if x[0] == chain and tname in x[1]:
-				x[1][tname] = x[1][tname][:index]
+			if tname in x[1][chain]:
+				x[1][chain][tname] = x[1][tname][:index]
 			return x
 		new_rdd = self.db.rdd.map(truncate_helper).cache()
 		self.db.rdd = new_rdd
@@ -59,37 +59,65 @@ class Trace():
 		if chain is not None:
 			if chain < 0:
 				chain = xrange(self.db.chains)[chain]
-			return self.db.rdd.filter(lambda x: x[0]==chain and tname in x[1]).map(lambda x: x[1][tname][slicing]).collect()
+			result = self.db.rdd.filter(lambda x: tname in x[1][chain]).map(lambda x: x[1][chain][tname][slicing]).collect()
+			if type(result) is list and len(result) == 1:
+				return result[0]
+			else:
+				return result
+			# return self.db.rdd.filter(lambda x: x[0]==chain and tname in x[1]).map(lambda x: x[1][tname][slicing]).collect()
 		else:
-			def reduce_helper(x, y):
+			def map_helper(x):
 				from numpy import concatenate
-				return (x[0], concatenate([x[1],y[1]]))
-			return self.db.rdd.filter(lambda x: tname in x[1]).map(lambda x: (x[0], x[1][tname][slicing])).sortByKey().reduce(reduce_helper)[1]
+				result = x[1][0][tname][slicing]
+				for collection in x[1][1:]:
+					result = concatenate(result, collection[tname][slicing])
+				return result
+			result = self.db.rdd.filter(lambda x: tname in x[1][0]).map(map_helper).collect()
+			if type(result) is list and len(result) == 1:
+				return result[0]
+			else:
+				return result
 
 	def __getitem__(self, index):
 		chain = self._chain
 		tname = self.name
 		if chain is None:
-			def reduce_helper(x, y):
+			def map_helper(x):
 				from numpy import concatenate
-				return (x[0], concatenate(x[1], y[1]))
-			return self.db.rdd.filter(lambda x: tname in x[1]).map(lambda x: (x[0], x[1][tname][index])).sortByKey().reduce(reduce_helper)[1]
+				result = x[1][0][tname][index]
+				for collection in x[1][1:]:
+					result = concatenate(result, collection[tname][index])
+				return result
+			result = self.db.rdd.filter(lambda x: tname in x[1][0]).map(map_helper).collect()
+			if type(result) is list and len(result) == 1:
+				return result[0]
+			else:
+				return result
 		else:
 			if chain < 0:
-				chain = range(self.db.chain)[chain]
-			return self.db.rdd.filter(lambda x: x[0]==chain and tname in x[1]).map(lambda x: x[1][tname][index]).collect()
+				chain = range(self.db.chains)[chain]
+			result = self.db.rdd.filter(lambda x: tname in x[1][chain]).map(lambda x: x[1][chain][tname][index]).collect()
+			if type(result) is list and len(result) == 1:
+				return result[0]
+			else:
+				return result
 
 	__call__ = gettrace
 
 	def length(self, chain=-1):
+		from operator import add
 		tname = self.name
 		if chain is not None:
 			if chain < 0:
 				chain = range(self.db.chains)[chain]
-			return self.db.rdd.filter(lambda x: x[0]==chain and tname in x[1]).map(lambda x: x[1][tname].shape[0]).collect()
+			return self.db.rdd.filter(lambda x: tname in x[1][chain]).map(lambda x: x[1][chain][tname].shape[0]).reduce(add)
 		else:
-			from operator import add
-			return self.db.rdd.filter(lambda x: tname in x[1]).map(lambda x: x[1][tname].shape[0]).reduce(add)
+			def map_helper(x):
+				total_length = 0
+				for collection in x[1]:
+					total_length += collection[tname].shape[0]
+				return total_length
+			return self.db.rdd.filter(lambda x: tname in x[1][0]).map(map_helper).reduce(add)
 
 	def stats(self, alpha=0.05, start=0, batches=100,
 			  chain=None, quantiles=(2.5, 25, 50, 75, 97.5)):
@@ -107,7 +135,7 @@ class Database():
 		self.trace_names = funs_to_tally
 		self.rdd = rdd
 		self._traces = {}
-		self.chains = self.rdd.count()
+		self.chains = self.rdd.count() # INCORRECT!!!!!!
 		for tname in self.trace_names:
 			if tname not in self._traces:
 				self._traces[tname] = self.__Trace__(name=tname, db=self, chain=self.chains)
@@ -131,7 +159,8 @@ class Database():
 		'''
 		Return a list of dictionaries, each containing the state of the Model and its StepMethods of its corresponding chain
 		'''
-		return self.rdd.map(lambda x: (x[0], x[1]['_state_'])).collect()
+		chain = self.chains-1
+		return self.rdd.map(lambda x: (x[0], x[1][chain]['_state_'])).collect()
 
 	def truncate(self, index, chain=-1):
 		'''
@@ -146,10 +175,9 @@ class Database():
 		'''
 		chain = range(self.chains)[chain]
 		def truncate_helper(x):
-			trace_names = x[1].keys()
-			if x[0] == chain:
-				for tname in trace_names:
-					x[1][tname] = x[1][tname][:index]
+			trace_names = x[1][chain].keys()
+			for tname in trace_names:
+				x[1][chain][tname] = x[1][chain][tname][:index]
 			return x
 		new_rdd = self.rdd.map(truncate_helper).cache()
 		self.rdd = new_rdd
