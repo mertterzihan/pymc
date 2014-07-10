@@ -17,11 +17,9 @@ import numpy as np
 import os
 from pyspark import SparkContext
 from pymc import six
-import copy
 import itertools
 import datetime
-import os
-from numpy.compat import asbytes, asstr
+from numpy.compat import asstr
 print_ = six.print_
 
 Supported_Backends = ['spark', 'hdfs']
@@ -362,7 +360,7 @@ class MCMCSpark():
 		for v in self._variables_to_tally:
 			def save_mapper(x):
 				data = '# Variable: %s\n' % v
-				data += '# Chain: %s\n' %x[0]
+				data += '# Chain: %s\n' % x[0]
 				data += '# Sample shape: %s\n' % str(x[1].shape)
 				data += '# Date: %s\n' % datetime.datetime.now()
 				X = x[1].reshape((-1, x[1][0].size))
