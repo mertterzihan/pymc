@@ -135,7 +135,7 @@ class Database():
 		self.trace_names = funs_to_tally
 		self.rdd = rdd
 		self._traces = {}
-		self.chains = self.rdd.count() # INCORRECT!!!!!!
+		self.chains = self.rdd.map(lambda x: len(x[1])).first()
 		for tname in self.trace_names:
 			if tname not in self._traces:
 				self._traces[tname] = self.__Trace__(name=tname, db=self, chain=self.chains)
