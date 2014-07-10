@@ -154,6 +154,53 @@ class DistributedMCMC(MCMCSpark):
 		chain : int 
 			The index of the chain to be saved. Defaults to None (all chains)
 		'''
-		pass
+		temp_rdd = self.db.rdd
+		if chain is not None:
+			if chain < 0:
+				chain = xrange(self.db.chains)[chain]
+			self.save_txt_helper(path, chain)
+		else:
+			total_chains = temp_rdd.map(lambda x: len(x[1])).first()
+			for chain in xrange(total_chains):
+				self.save_txt_helper(path, chain)
+			
 
-		
+	def save_txt_helper(self, path, chain):
+		'''
+		Helper function for saving data to HDFS as txt files
+		'''
+		import datetime
+		import os
+		import numpy as np
+		from numpy.compat import asstr
+		for var in self._variables_to_tally:
+			def save_mapper(x):
+				data = '# Variable: %s\n' % var
+				data += '# Partition: %s\n' % x[0]
+				data += '# Sample shape: %s\n' % str(x[1].shape)
+				data += '# Date: %s\n' % datetime.datetime.now()
+				X = x[1].reshape((-1, x[1][0].size))
+				fmt = '%.18e'
+				delimiter = ','
+				newline = '\n'
+				if isinstance(fmt, bytes):
+					fmt = asstr(fmt)
+				delimiter = asstr(delimiter)
+				X = np.asarray(X)
+				if X.ndim == 1:
+					if X.dtype.names is None:
+						X = np.atleast_2d(X).T
+						ncol = 1
+					else:
+						ncol = len(X.dtype.descr)
+				else:
+					ncol = X.shape[1]
+				n_fmt_chars = fmt.count('%')
+				fmt = [fmt, ] * ncol
+				format = delimiter.join(fmt)
+				for row in X:
+					data += format % tuple(row) + newline
+				return data
+
+			self.db.rdd.filter(lambda x: var in x[1][chain]).map(lambda x: (x[0], x[1][chain][var])).map(save_mapper).saveAsTextFile(os.path.join(path, str(chain), var))
+		self.db.rdd.map(lambda x: (x[0], x[1][chain]['_state_'])).saveAsTextFile(os.path.join(path, str(chain), 'state'))
