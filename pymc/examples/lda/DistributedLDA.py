@@ -1,7 +1,13 @@
 def model_function(data, global_param):
 	'''
-	data : list of lines where each line represents a document as follows: doc_number,word_0 word_1 ... word_N
-	global_param : random number generator seed
+	This is the function which generates the PyMC model for LDA
+
+	Parameters
+	----------
+	data : list of strings
+		list of lines where each line represents a document as follows: doc_number,word_0 word_1 ... word_N
+	global_param : int
+		random number generator seed
 	'''
 	from pymc import Dirichlet, Categorical, Deterministic, Lambda, Stochastic
 	import math
@@ -10,30 +16,50 @@ def model_function(data, global_param):
 
 	beta = 0.1
 	total_vocab = 78
-	alpha = [beta for t in xrange(total_vocab)]
+	beta_vector = [beta for t in xrange(total_vocab)]
 	total_topics = 10
 	local_iter = 10
 
+	'''
+	Save the state of numpy random number generator, generate topic-word samples from a symmetric Dirichlet
+	distribution defined by global_param (the same phi vectors will be drawn in each machine in the cluster).
+	Then revert the state of numpy random number generator back to the initial state. 
+	'''
 	rand_state = np.random.get_state()
 	np.random.seed(global_param)
-	topic_word_dist = [[dirichlet(alpha) for i in xrange(local_iter+1)] for t in xrange(total_topics)]
+	# Symmetric Dirichlet distribution for topic-word distribution, phi, defined by beta
+	topic_word_dist = [[dirichlet(beta_vector) for i in xrange(local_iter+1)] for t in xrange(total_topics)]
 	np.random.set_state(rand_state)
 
-	def log_beta(alpha):
-		return sum(math.lgamma(a) for a in alpha) - math.lgamma(sum(alpha))
-	    
-	def phi_logp(value, alpha, topic):
-		kernel = sum((a - 1) * math.log(t) for a, t in zip(alpha, value))
-		return kernel - log_beta(alpha) 
+	def log_beta_func(beta_vector):
+		'''
+		A function to compute log-beta function given the prior parameters of a Dirichlet distribution
+		'''
+		return sum(math.lgamma(a) for a in beta_vector) - math.lgamma(sum(beta_vector))
 
-	def phi_rand(alpha, topic):
+	# Precalculate log_beta, since they share the same prior parameter, it is the same for all the cases
+	log_beta = log_beta_func(beta_vector)
+	    
+	def phi_logp(value, beta_vector, topic, log_beta):
+		'''
+		Compute the pdf of a value given the Dirichlet parameters
+		'''
+		kernel = sum((a - 1) * math.log(t) for a, t in zip(beta_vector, value))
+		return kernel - log_beta
+
+	def phi_rand(beta_vector, topic, log_beta):
+		'''
+		Since the random variables have been already drawn, it just extracts the next 
+		'''
 		return topic_word_dist[topic].pop(0)
 
+	# Custom Stochastic class for the node that represents topic-word distribution 
 	phi = [Stochastic(logp=phi_logp,
 					 doc='Dirichlet prior for topic-word distributions',
 					 name='phi_%i' % k,
-					 parents={'alpha': alpha,
-					 		  'topic': k},
+					 parents={'beta_vector': beta_vector,
+					 		  'topic': k,
+					 		  'log_beta': log_beta},
 					 random=phi_rand,
 					 trace=True,
 					 dtype=float,
@@ -43,34 +69,39 @@ def model_function(data, global_param):
 					 plot=None,
 					 verbose=0) for k in xrange(total_topics)]
 
-	observations = list()
-	local_docs = dict()
-	doc_number = 0
-	for line in data:
+	local_docs = list()
+	# Given the data as a list of strings (lines), structure it in such a way that it can be used by the below model
+	for doc_number,line in enumerate(data):
 		document_data = line.split(',')
-		local_docs[doc_number] = int(document_data[0])
 		words = document_data[1].split(' ')
-		for order, word in enumerate(words):
-			observations.append((int(word), order, int(doc_number)))
-		doc_number += 1
+		words = map(int, words)
+		local_docs.append((int(document_data[0]), words))
 
+	# The symmetric prior parameter for document-topic distribution
 	alpha = 50/total_topics
-	theta = [Dirichlet('theta_%i' % i, theta=[alpha for k in xrange(total_topics)]) for i in xrange(doc_number)]
-	z = [Categorical('z_' + str(obs[1]) + '_' + str(local_docs[obs[2]]), p=theta[obs[2]], size=1) for obs in observations]
+	# The Dirichlet distribution for document-topic distribution, theta
+	theta = [Dirichlet('theta_%i' % local_docs[i][0], theta=[alpha for k in xrange(total_topics)]) for i in xrange(len(local_docs))]
+	# The topic assignments for each word
+	z = [Categorical('z_' + str(doc[0]), p=theta[n], size=len(doc[1])) for n, doc in enumerate(local_docs)]
 	x = list()
-	for n, obs in enumerate(observations):
-		p = Lambda('p_' + str(obs[1]) + '_' + str(local_docs[obs[2]]), lambda z=z[n]: phi[z].value)
-		x.append(Categorical('x_' + str(obs[1]) + '_' + str(local_docs[obs[2]]), p=p, value=obs[0], size=1, observed=True))
+	# Modeling the observations
+	for n, doc in enumerate(local_docs):
+		# p = [Lambda('p_' + str(order) + '_' + str(doc[0]), lambda z=z[n][order]: phi[z].value, trace=False,) for order,word in enumerate(doc[1])]
+		x.append(Categorical('x_' + str(doc[0]), p=[phi[z[n][order].value].value for order,word in enumerate(doc[1])], value=doc[1], size=len(doc[1]), observed=True))
 	return locals()
 
 def global_update():
+	'''
+	This function is being called after each local iteration of sampler to synchronize the nodes
+	'''
 	import random
 	return int(random.random()*1000000)
 
 
 from pymc.DistributedMCMC import DistributedMCMC
 
-path = '/Users/test/Desktop/nips.txt'
+# The path of the txt file that was produced by the preprocess_nips.py script
+path = '/Users/test/nips.txt'
 
 m = DistributedMCMC(spark_context=sc, model_function=model_function, nJobs=4, observation_file=path, local_iter=10, global_update=('phi', global_update))
 
