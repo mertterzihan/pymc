@@ -13,6 +13,30 @@ from pymc.database import distributed_spark
 class DistributedMCMC(MCMCSpark):
 
 	def __init__(self, input=None, db='spark', name='MCMC', calc_deviance=True, nJobs=1, **kwargs):
+		'''
+		Parameters
+		----------
+		- input : model
+			Model definition
+		- db : str
+			The name of the database backend that will store the values
+			of the stochastics and deterministics sampled during the MCMC loop.
+		- nJobs : integer
+			Number of Spark jobs that will run MCMC
+		- **kwarg : dict
+			- spark_context : SparkContext
+				A SparkContext instance that will be used to load data
+			- dbname : str
+				Optional, location to save the files on HDFS
+			- model_function : function
+				A wrapper function which builds the model and returns it
+			- observation_file : HDFS path
+				Path of the data file which will be partitioned over the machines in the cluster
+			- local_iter : int
+				Number of iterations that local sampler will be run
+			- global_update : function
+				A wrapper function which updates the global parameters
+		'''
 		self.model_function = kwargs.pop("model_function", None)
 		self.observation_file = kwargs.pop("observation_file", None)
 		self.local_iter = kwargs.pop("local_iter", None)
@@ -23,6 +47,12 @@ class DistributedMCMC(MCMCSpark):
 		self, iter, burn=0, thin=1, tune_interval=1000, tune_throughout=True,
 		save_interval=None, burn_till_tuned=False, stop_tuning_after=5,
 			verbose=0, progress_bar=True):
+		'''
+		Partitions the data over the machines, runs sampling algorithm on the slaves and 
+		updates global parameter in turn until reaching the specified number of iterations
+
+		Parameters are similar to MCMC.sample()
+		'''
 		name = self.name
 		calc_deviance = self.calc_deviance
 		kwargs = self.kwargs
@@ -33,6 +63,7 @@ class DistributedMCMC(MCMCSpark):
 		global_update = self.global_update
 
 		def sample_on_spark(data):
+			# Load the database, so that MCMC can continue sampling from where it had concluded the previous local iteration
 			def load_ram_database(data_dict):
 				from pymc.database import ram
 				db = ram.Database('temp_database')
@@ -47,11 +78,11 @@ class DistributedMCMC(MCMCSpark):
 				db.trace_names.append(trace_names)
 				return db
 
-			if len(data) == 3:
+			if len(data) == 3: # If this method has been run in a previous iteration, so that MCMC should be loaded
 				input_model = model_function(data[1], global_param.value)
 				index = data[2].index(None)
 				m = MCMC(input_model, db=load_ram_database(data[2][index-1]), name=name, calc_deviance=calc_deviance, **kwargs)
-			else:
+			else: # If this is the first iteration
 				input_model = model_function(data[1], global_param.value)
 				m = MCMC(input_model, db='ram', name=name, calc_deviance=calc_deviance, **kwargs)
 
@@ -61,6 +92,7 @@ class DistributedMCMC(MCMCSpark):
 
 			# TODO: Local Update
 
+			# Create or update the dictionary
 			if len(data) == 3:
 				import numpy as np
 				container_list = data[2]
@@ -96,14 +128,15 @@ class DistributedMCMC(MCMCSpark):
 				return b
 			else:
 				return list([a, b])
+		# Partition the data and generate a list of data assigned to each node
 		rdd = self.sc.textFile(observation_file, minPartitions=nJobs).mapPartitionsWithIndex(generate_keys).reduceByKey(generate_lists).cache()
 		current_iter = 0
 		while current_iter < iter:
+			# If the user has provided a global update function, execute it to synch the nodes
 			if self.global_update is not None:
 				param = global_update[1]()
-				global_param = self.sc.broadcast(param)
-				# exec(global_update[0] + ' = self.sc.broadcast(param)')
-			rdd = rdd.map(sample_on_spark).cache()
+				global_param = self.sc.broadcast(param) # Broadcast the global parameters
+			rdd = rdd.map(sample_on_spark).cache() # Run the local sampler
 			current_iter += self.local_iter
 		rdd = rdd.map(lambda x: (x[0], x[2])).cache()
 		def extract_var_names(a,b):
@@ -119,28 +152,19 @@ class DistributedMCMC(MCMCSpark):
 			else:
 				s = set([a,b])
 				return s
+		# Extract the variable names
 		vars_to_tally = rdd.map(lambda x: x[1][0]).flatMap(lambda x: filter(lambda i: i!='_state_', x.keys())).reduce(extract_var_names)
-		# self._variables_to_tally = set(vars_to_tally)
 		self._variables_to_tally = vars_to_tally
 		self._assign_database_backend(rdd, vars_to_tally)
+		# If hdfs was selected as the database, save the traces as txt files
 		if self.save_to_hdfs:
 			self.save_as_txt_file(self.dbname)
 
 
 	def _assign_database_backend(self, db, vars_to_tally):
 		'''
-		Assign Spark RDD database
+		Assign distributed_spark RDD database
 		'''
-		'''if isinstance(db, str):
-			self.db = spark.Database(db, vars_to_tally)
-		elif isinstance(db, spark.Database):
-			self.db = db
-			self.restore_sampler_state()
-		else:
-			vars_to_tally = rdd.map(lambda x: x[1].keys()).first()
-			vars_to_tally.remove('_state_')
-			self.db = spark.Database(db, vars_to_tally)
-			self.restore_sampler_state()'''
 		self.db = distributed_spark.Database(db, vars_to_tally)
 
 	def save_as_txt_file(self, path, chain=None):
