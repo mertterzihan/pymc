@@ -1,6 +1,6 @@
 def model_function(data, global_param):
 	'''
-	This is the function which generates the PyMC model for LDA
+	This is the function which generates the PyMC model for LDA (naively distributed)
 
 	Parameters
 	----------
@@ -83,11 +83,9 @@ def model_function(data, global_param):
 	theta = [Dirichlet('theta_%i' % local_docs[i][0], theta=[alpha for k in xrange(total_topics)]) for i in xrange(len(local_docs))]
 	# The topic assignments for each word
 	z = [Categorical('z_' + str(doc[0]), p=theta[n], size=len(doc[1])) for n, doc in enumerate(local_docs)]
-	x = [object for l in local_docs]
 	# Modeling the observations
-	for n, doc in enumerate(local_docs):
-		# p = [Lambda('p_' + str(order) + '_' + str(doc[0]), lambda z=z[n][order]: phi[z].value, trace=False,) for order,word in enumerate(doc[1])]
-		x[n] = Categorical('x_' + str(doc[0]), p=[phi[z[n][order].value].value for order,word in enumerate(doc[1])], value=doc[1], size=len(doc[1]), observed=True)
+	x = [Categorical('x_' + str(doc[0]), p=[phi[z[n][order].value].value for order,word in enumerate(doc[1])], value=doc[1], size=len(doc[1]), observed=True) for n, doc in enumerate(local_docs)]
+	
 	return locals()
 
 def global_update():
