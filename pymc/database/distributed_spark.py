@@ -272,6 +272,72 @@ class Trace():
 			return (x[0]+y[0], np.divide(np.add(np.multiply(x[1], x[0]), np.multiply(y[1], y[0])), x[0]+y[0]))
 		return rdd.map(hpd_map_helper).reduce(hpd_reduce_helper)[1]
 
+	def estimate_parametric(self, chain=None):
+		tname = self.name
+		def estimator_reducer(x, y):
+			return np.add(x, y)
+		filtered_rdd = self.db.rdd
+		if chain is None:
+			def concat(x):
+				return np.concatenate([chain[tname] for chain in x[1]])
+			filtered_rdd = self.db.rdd.filter(lambda x: tname in x[1][0]).map(concat).cache()
+		else:
+			filtered_rdd = self.db.rdd.filter(lambda x: tname in x[1][chain]).map(lambda x: x[1][chain][tname]).cache()
+		estimator_covariance = np.linalg.inv(filtered_rdd.map(lambda x: np.linalg.inv(np.cov(x))).reduce(estimator_reducer))
+		estimator_mean = np.dot(estimator_covariance, filtered_rdd.map(lambda x: np.dot(np.linalg.inv(np.cov(x)), np.mean(x, axis=1))).reduce(estimator_reducer))
+		return estimator_mean, estimator_covariance
+
+	def estimate_semiparametric(self, total_iter, chain=None):
+		import math
+		tname = self.name
+		filtered_rdd = self.db.rdd
+		if chain is None:
+			def concat(x):
+				return (x[0], np.concatenate([chain[tname] for chain in x[1]]))
+			filtered_rdd = self.db.rdd.filter(lambda x: tname in x[1][0]).map(concat).cache()
+		else:
+			filtered_rdd = self.db.rdd.filter(lambda x: tname in x[1][chain]).map(lambda x: (x[0], x[1][chain][tname])).cache()
+		partitions = filtered_rdd.map(lambda x: x[0]).collect()
+		initial_sequence = map(int, np.floor(np.random.uniform(0, total_iter+1, len(partitions))))
+		t = dict()
+		for n, partition in enumerate(partitions):
+			t[partition] = initial_sequence[n]
+		d = filtered_rdd.map(lambda x: x[1].shape[1]).first()
+		theta = [object] * total_iter
+		for i in xrange(1, total_iter+1):
+			h = math.pow(i, -1/(4+d))
+			mixture_weight, mixture_mean, mixture_cov = self.calculate_component_weights(filtered_rdd, t, h, d, total_iter, len(partitions))
+			for m in partitions:
+				c = t
+				c[m] = np.floor(np.random.uniform(0, len(total_iter)+1))
+				temp_weight, temp_mean, temp_cov = self.calculate_component_weights(filtered_rdd, c, h, d, total_iter, len(partitions))
+				u = np.random.uniform()
+				if(u < temp_weight/mixture_weight):
+					t = c
+					mixture_weight = temp_weight
+					mixture_mean = temp_mean
+					mixture_cov = temp_cov
+			theta[i-1] = np.random.multivariate_normal(mixture_mean, mixture_cov)
+		return theta
+
+	def calculate_component_weights(self, filtered_rdd, t, h, d, total_iter, M):
+		from operator import mul
+		from scipy.stats import multivariate_normal as mult_norm
+		full_covariance = np.linalg.inv(filtered_rdd.map(lambda x: np.linalg.inv(np.cov(x[1]))).reduce(np.add))
+		full_mean = np.dot(estimator_covariance, filtered_rdd.map(lambda x: np.dot(np.linalg.inv(np.cov(x[1])), np.mean(x, axis=1))).reduce(np.add))
+		sample_average = np.divide(filtered_rdd.reduce(np.add), M)
+		identity_cov = np.multiply(math.pow(h,2), np.identity(d))
+		def nonparam_mix_weight_mapper(x):
+			return mult_norm(t[x[0]], sample_average, identity_cov)
+		nonparam_mixture_weight = filtered_rdd.map(nonparam_mix_weight_mapper).reduce(mul)
+		mixture_cov = np.inv(np.add(np.multiply(M/h, np.identity(d)), np.inv(full_covariance)))
+		mixture_mean = np.dot(mixture_cov, np.add(np.dot(np.multiply(M/h, np.identity(d)), sample_average), np.dot(np.inv(full_covariance), full_mean)))
+		mixture_weight = nonparam_mixture_weight * mult_norm(sample_average, full_mean, np.add(full_covariance, np.multiply(h/M, np.identity(d))))
+		def mix_weight_mapper(x):
+			return mult_norm(t[x[0]], full_mean, full_covariance)
+		mixture_weight /= filtered_rdd.map(mix_weight_mapper).reduce(mul)
+		return mixture_weight, mixture_mean, mixture_cov
+
 
 class Database():
 	'''
