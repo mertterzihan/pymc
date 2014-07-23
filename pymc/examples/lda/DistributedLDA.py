@@ -15,14 +15,15 @@ def model_function(data, global_param):
 	from numpy.random import dirichlet
 	from pymc.distributions import dirichlet_like
 
-	beta = 0.5
+	beta = 0.05
 	total_vocab = 78
 	beta_vector = [beta for t in xrange(total_vocab+1)]
-	total_topics = 10
+	total_topics = 5
 
 	# Symmetric Dirichlet prior for topic-word distributions
 	phi = Container([Dirichlet("phi_%s" % k, 
-							   theta=beta_vector) for k in range(total_topics)])
+							   theta=beta_vector,
+							   value=dirichlet(beta_vector)[:-1]) for k in range(total_topics)])
 
 	local_docs = list()
 	# Given the data as a list of strings (lines), structure it in such a way that it can be used by the below model
@@ -34,9 +35,11 @@ def model_function(data, global_param):
 
 	# The symmetric prior parameter for document-topic distribution
 	alpha = 50.0/total_topics
+	alpha_vector = [alpha for k in xrange(total_topics)]
 	# The Dirichlet distribution for document-topic distribution, theta
 	theta = Container([Dirichlet('theta_%i' % local_docs[i][0], 
-								 theta=[alpha for k in xrange(total_topics)]) for i in xrange(len(local_docs))])
+								 theta=alpha_vector,
+								 value=dirichlet(alpha_vector)[:-1]) for i in xrange(len(local_docs))])
 	# The topic assignments for each word
 	z = Container([Categorical('z_' + str(doc[0]), 
 							   p=theta[n], 
@@ -55,10 +58,13 @@ def model_function(data, global_param):
 def step_function(mcmc):
 	import pymc as pm
 	import numpy as np
-	class UniformWalkStep(pm.Metropolis):
+	from numpy.random import normal as rnormal
+	from pymc.utils import round_array
+
+	class HybridRandomWalk(pm.Metropolis):
 		def __init__(self, stochastic, min_value, max_value, scale=1., proposal_sd=None,
 					 proposal_distribution=None, positive=False, verbose=-1, tally=True):
-			# UniformWalkStep class initialization
+			# HybridRandomWalk class initialization
 
 			# Initialize superclass
 			pm.Metropolis.__init__(self,
@@ -80,7 +86,7 @@ def step_function(mcmc):
 		@staticmethod
 		def competence(stochastic):
 			"""
-			The competence function for UniformWalkStep.
+			The competence function for HybridRandomWalk.
 			"""
 			if stochastic.dtype in integer_dtypes:
 				return 0.5
@@ -88,9 +94,29 @@ def step_function(mcmc):
 				return 0
 
 		def propose(self):
-			# Propose new values using uniform distribution
+			a = np.random.rand()
 			k = np.shape(self.stochastic.value)
-			self.stochastic.value = np.random.randint(self.min_value, self.max_value, size=k)
+			if a < 0.3:
+				# Propose new values using uniform distribution
+				self.stochastic.value = np.random.randint(self.min_value, self.max_value, size=k)
+			else:
+				# Random walk
+				'''new_val = rnormal(
+					self.stochastic.value,
+					self.adaptive_scale_factor *
+					self.proposal_sd)
+
+				new_val = round_array(new_val)'''
+				walk = np.random.randint(0, 2, size=k)
+				zero_indices = walk == 0
+				walk[zero_indices] = -1
+				new_val = self.stochastic.value + walk
+				low_values_indices = new_val < self.min_value
+				new_val[low_values_indices] = self.min_value
+				large_values_indices = new_val > self.max_value-1
+				new_val[large_values_indices] = self.max_value-1
+				# Round before setting proposed value
+				self.stochastic.value = new_val
 
 	K = 5
 	import re
@@ -98,7 +124,7 @@ def step_function(mcmc):
 	pattern = re.compile('z_')
 	params = [p for p in mcmc.variables if pattern.match(p.__name__)]
 	for z in params:
-		mcmc.use_step_method(UniformWalkStep, z, 0, K)
+		mcmc.use_step_method(HybridRandomWalk, z, 0, K)
 	return mcmc
 
 
@@ -111,7 +137,7 @@ m = DistributedMCMC(spark_context=sc,
 					model_function=model_function, 
 					nJobs=4, 
 					observation_file=path, 
-					local_iter=10, 
+					local_iter=100, 
 					step_function=step_function)
 
 m.sample(100)
