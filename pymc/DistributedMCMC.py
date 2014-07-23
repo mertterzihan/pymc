@@ -41,6 +41,7 @@ class DistributedMCMC(MCMCSpark):
 		self.observation_file = kwargs.pop("observation_file", None)
 		self.local_iter = kwargs.pop("local_iter", None)
 		self.global_update = kwargs.pop("global_update", None)
+		self.step_function = kwargs.pop("step_function", None)
 		MCMCSpark.__init__(self, input=None, db=db, name=name, calc_deviance=calc_deviance, nJobs=nJobs, **kwargs)
 
 	def sample(
@@ -57,10 +58,15 @@ class DistributedMCMC(MCMCSpark):
 		calc_deviance = self.calc_deviance
 		kwargs = self.kwargs
 		model_function = self.model_function
+		global_update = self.global_update
 		observation_file = self.observation_file
 		local_iter = self.local_iter
 		nJobs = self.nJobs
-		global_update = self.global_update
+		self.total_iter = iter
+		#total_iter = self.total_iter
+		step_function = None
+		if self.step_function is not None:
+			step_function = self.step_function
 
 		def sample_on_spark(data):
 			# Load the database, so that MCMC can continue sampling from where it had concluded the previous local iteration
@@ -78,17 +84,22 @@ class DistributedMCMC(MCMCSpark):
 				db.trace_names.append(trace_names)
 				return db
 
-			if len(data) == 3: # If this method has been run in a previous iteration, so that MCMC should be loaded
+			if global_update is None:
+				input_model = model_function(data[1], global_param)
+			else:
 				input_model = model_function(data[1], global_param.value)
+			if len(data) == 3: # If this method has been run in a previous iteration, so that MCMC should be loaded
 				index = data[2].index(None)
 				m = MCMC(input_model, db=load_ram_database(data[2][index-1]), name=name, calc_deviance=calc_deviance, **kwargs)
 			else: # If this is the first iteration
-				input_model = model_function(data[1], global_param.value)
 				m = MCMC(input_model, db='ram', name=name, calc_deviance=calc_deviance, **kwargs)
 
+			if step_function is not None:
+				m = step_function(m)
+
 			m.sample(local_iter, burn, thin, tune_interval, tune_throughout,
-        		save_interval, burn_till_tuned, stop_tuning_after,
-            	verbose, progress_bar)
+					 save_interval, burn_till_tuned, stop_tuning_after,
+					 verbose, progress_bar)
 
 			# TODO: Local Update
 
@@ -107,7 +118,7 @@ class DistributedMCMC(MCMCSpark):
 				container_list = [None]*(iter/local_iter)
 				container = {}
 				for tname in m.db._traces:
-					container[tname] = m.db._traces[tname]._trace[0]
+					container[tname] = m.trace(tname)[:]
 				container['_state_'] = m.get_state()
 				container_list[0] = container
 				return (data[0], data[1], container_list)
@@ -131,11 +142,13 @@ class DistributedMCMC(MCMCSpark):
 		# Partition the data and generate a list of data assigned to each node
 		rdd = self.sc.textFile(observation_file, minPartitions=nJobs).mapPartitionsWithIndex(generate_keys).reduceByKey(generate_lists).cache()
 		current_iter = 0
-		while current_iter < iter:
+		while current_iter < self.total_iter:
 			# If the user has provided a global update function, execute it to synch the nodes
 			if self.global_update is not None:
-				param = global_update[1]()
+				param = self.global_update[1]()
 				global_param = self.sc.broadcast(param) # Broadcast the global parameters
+			else:
+				global_param = None
 			rdd = rdd.map(sample_on_spark).cache() # Run the local sampler
 			current_iter += self.local_iter
 		rdd = rdd.map(lambda x: (x[0], x[2])).cache()
@@ -228,3 +241,25 @@ class DistributedMCMC(MCMCSpark):
 
 			self.db.rdd.filter(lambda x: var in x[1][chain]).map(lambda x: (x[0], x[1][chain][var])).map(save_mapper).saveAsTextFile(os.path.join(path, str(chain), var))
 		self.db.rdd.map(lambda x: (x[0], x[1][chain]['_state_'])).saveAsTextFile(os.path.join(path, str(chain), 'state'))
+
+
+	def combine_samples(self, variables=None, chain=None, method='semiparametric'):
+		import re
+		pattern = re.compile(".*adaptive_scale_factor|deviance")
+		method_collection = set(['parametric', 'semiparametric'])
+		estimator_dict = dict()
+		if variables is None:
+			variables = [v for v in self._variables_to_tally if not pattern.match(v)]
+		else:
+			variables = [v for v in variables if (v in self._variables_to_tally) and (not pattern.match(v))]
+
+		if method not in method_collection:
+			raise ValueError("Currently, only semiparametric and parametric estimators are supported!")
+		for variable in variables:
+			if method == 'semiparametric':
+				estimator_dict == self.db._traces[variable].estimate_semiparametric(total_iter=self.total_iter, chain=chain)
+			elif method == 'parametric':
+				estimator_dict[variable] = self.db._traces[variable].estimate_parametric(chain=chain)
+		return estimator_dict
+
+				
