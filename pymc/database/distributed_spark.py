@@ -274,8 +274,6 @@ class Trace():
 
 	def estimate_parametric(self, chain=None):
 		tname = self.name
-		def estimator_reducer(x, y):
-			return np.add(x, y)
 		filtered_rdd = self.db.rdd
 		if chain is None:
 			def concat(x):
@@ -283,8 +281,8 @@ class Trace():
 			filtered_rdd = self.db.rdd.filter(lambda x: tname in x[1][0]).map(concat).cache()
 		else:
 			filtered_rdd = self.db.rdd.filter(lambda x: tname in x[1][chain]).map(lambda x: x[1][chain][tname]).cache()
-		estimator_covariance = np.linalg.inv(filtered_rdd.map(lambda x: np.linalg.inv(np.cov(x))).reduce(estimator_reducer))
-		estimator_mean = np.dot(estimator_covariance, filtered_rdd.map(lambda x: np.dot(np.linalg.inv(np.cov(x)), np.mean(x, axis=1))).reduce(estimator_reducer))
+		estimator_covariance = np.linalg.inv(filtered_rdd.map(lambda x: np.linalg.inv(np.cov(x.T))).reduce(np.add))
+		estimator_mean = np.dot(estimator_covariance, filtered_rdd.map(lambda x: np.dot(np.linalg.inv(np.cov(x.T)), np.mean(x, axis=0))).reduce(np.add))
 		return estimator_mean, estimator_covariance
 
 	def estimate_semiparametric(self, total_iter, chain=None):
@@ -322,10 +320,11 @@ class Trace():
 
 	def calculate_component_weights(self, filtered_rdd, t, h, d, total_iter, M):
 		from operator import mul
+		import math
 		from scipy.stats import multivariate_normal as mult_norm
-		full_covariance = np.linalg.inv(filtered_rdd.map(lambda x: np.linalg.inv(np.cov(x[1]))).reduce(np.add))
-		full_mean = np.dot(estimator_covariance, filtered_rdd.map(lambda x: np.dot(np.linalg.inv(np.cov(x[1])), np.mean(x, axis=1))).reduce(np.add))
-		sample_average = np.divide(filtered_rdd.reduce(np.add), M)
+		full_covariance = np.linalg.inv(filtered_rdd.map(lambda x: np.linalg.inv(np.cov(x[1].T))).reduce(np.add))
+		full_mean = np.dot(full_covariance, filtered_rdd.map(lambda x: np.dot(np.linalg.inv(np.cov(x[1].T)), np.mean(x[1], axis=0))).reduce(np.add))
+		sample_average = np.divide(filtered_rdd.map(lambda x: x[1]).reduce(np.add), M)
 		identity_cov = np.multiply(math.pow(h,2), np.identity(d))
 		def nonparam_mix_weight_mapper(x):
 			return mult_norm(t[x[0]], sample_average, identity_cov)
