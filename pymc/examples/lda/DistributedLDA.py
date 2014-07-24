@@ -15,15 +15,17 @@ def model_function(data, global_param):
 	from numpy.random import dirichlet
 	from pymc.distributions import dirichlet_like
 
-	beta = 0.05
+	beta = 0.01
 	total_vocab = 78
 	beta_vector = [beta for t in xrange(total_vocab+1)]
-	total_topics = 5
+	total_topics = 10
+
+	phi_value = beta_vector/np.sum(beta_vector)
 
 	# Symmetric Dirichlet prior for topic-word distributions
 	phi = Container([Dirichlet("phi_%s" % k, 
 							   theta=beta_vector,
-							   value=dirichlet(beta_vector)[:-1]) for k in range(total_topics)])
+							   value=phi_value[:-1]) for k in range(total_topics)])
 
 	local_docs = list()
 	# Given the data as a list of strings (lines), structure it in such a way that it can be used by the below model
@@ -34,12 +36,13 @@ def model_function(data, global_param):
 		local_docs.append((int(document_data[0]), words))
 
 	# The symmetric prior parameter for document-topic distribution
-	alpha = 50.0/total_topics
+	alpha = 0.1#50.0/total_topics
 	alpha_vector = [alpha for k in xrange(total_topics)]
+	theta_value = alpha_vector/np.sum(alpha_vector)
 	# The Dirichlet distribution for document-topic distribution, theta
 	theta = Container([Dirichlet('theta_%i' % local_docs[i][0], 
 								 theta=alpha_vector,
-								 value=dirichlet(alpha_vector)[:-1]) for i in xrange(len(local_docs))])
+								 value=theta_value[:-1]) for i in xrange(len(local_docs))])
 	# The topic assignments for each word
 	z = Container([Categorical('z_' + str(doc[0]), 
 							   p=theta[n], 
@@ -63,7 +66,7 @@ def step_function(mcmc):
 
 	class HybridRandomWalk(pm.Metropolis):
 		def __init__(self, stochastic, min_value, max_value, scale=1., proposal_sd=None,
-					 proposal_distribution=None, positive=False, verbose=-1, tally=True):
+					 proposal_distribution=None, positive=True, verbose=-1, tally=True):
 			# HybridRandomWalk class initialization
 
 			# Initialize superclass
@@ -118,7 +121,7 @@ def step_function(mcmc):
 				# Round before setting proposed value
 				self.stochastic.value = new_val
 
-	K = 5
+	K = 10
 	import re
 	# Apply this custom step method to all topic assignment variables, namely z's
 	pattern = re.compile('z_')
@@ -131,13 +134,13 @@ def step_function(mcmc):
 from pymc.DistributedMCMC import DistributedMCMC
 
 # The path of the txt file that was produced by the preprocess_nips.py script
-path = '/Users/test/nips.txt'
+path = 'hdfs:///user/test/data/nips.txt'
 #global_update=('phi', global_update)
 m = DistributedMCMC(spark_context=sc, 
 					model_function=model_function, 
 					nJobs=4, 
 					observation_file=path, 
-					local_iter=100, 
+					local_iter=1000, 
 					step_function=step_function)
 
-m.sample(100)
+m.sample(1000)
