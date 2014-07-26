@@ -15,7 +15,6 @@ import re
 
 import numpy as np 
 import os
-from pyspark import SparkContext
 from pymc import six
 import itertools
 import datetime
