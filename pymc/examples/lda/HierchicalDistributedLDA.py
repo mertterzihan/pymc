@@ -2,19 +2,19 @@
 Implementation of HD-LDA model that has been described in Distributed Algorithms 
 for Topic Models by D. Newman, et al. (2009).
 '''
-from random import random
-total_topics = 10
+from numpy import randint
+total_topics = 20
 # Seeds for global parameters, phi and beta, to enable synchronization between the jobs
-phi_seeds = [int(random()*1000000) for k in xrange(total_topics)]
-beta_seeds = [int(random()*1000000) for k in xrange(total_topics)]
+phi_seeds = randint(1000000, size=total_topics)
+beta_seeds = randint(1000000, size=total_topics)
 
 def model_function(data, global_param):
 	from pymc import Dirichlet, Categorical, Gamma, Lambda, Container, Model
 	import numpy as np
 
-	total_partitions = 4
-	total_words = 7491
-	total_vocab = 78
+	total_partitions = 100
+	total_words = 2343561
+	total_vocab = 4792
 
 	a = float((total_partitions-1)*total_words)/(total_partitions*total_topics)
 	b = 1.0
@@ -211,13 +211,13 @@ def step_function(mcmc):
 from pymc.DistributedMCMC import DistributedMCMC
 
 # The path of the txt file that was produced by the preprocess_nips.py script
-path = 'hdfs:///user/test/data/nips.txt'
+path = 'hdfs:///user/mert.terzihan/data/nips.txt'
 
 m = DistributedMCMC(spark_context=sc, 
 					model_function=model_function, 
-					nJobs=4, 
+					nJobs=100, 
 					observation_file=path, 
-					local_iter=1000, 
+					local_iter=2000, 
 					step_function=step_function)
 
-m.sample(1000)
+m.sample(2000)

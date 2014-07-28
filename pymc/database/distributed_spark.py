@@ -324,16 +324,16 @@ class Trace():
 		from scipy.stats import multivariate_normal as mult_norm
 		full_covariance = np.linalg.inv(filtered_rdd.map(lambda x: np.linalg.inv(np.cov(x[1].T))).reduce(np.add))
 		full_mean = np.dot(full_covariance, filtered_rdd.map(lambda x: np.dot(np.linalg.inv(np.cov(x[1].T)), np.mean(x[1], axis=0))).reduce(np.add))
-		sample_average = np.divide(filtered_rdd.map(lambda x: x[1]).reduce(np.add), M)
+		sample_average = np.divide(filtered_rdd.map(lambda x: x[1][t[x[0]]]).reduce(np.add), M)
 		identity_cov = np.multiply(math.pow(h,2), np.identity(d))
 		def nonparam_mix_weight_mapper(x):
-			return mult_norm(t[x[0]], sample_average, identity_cov)
+			return mult_norm(x[1][t[x[0]]], sample_average, identity_cov)
 		nonparam_mixture_weight = filtered_rdd.map(nonparam_mix_weight_mapper).reduce(mul)
 		mixture_cov = np.inv(np.add(np.multiply(M/h, np.identity(d)), np.inv(full_covariance)))
 		mixture_mean = np.dot(mixture_cov, np.add(np.dot(np.multiply(M/h, np.identity(d)), sample_average), np.dot(np.inv(full_covariance), full_mean)))
 		mixture_weight = nonparam_mixture_weight * mult_norm(sample_average, full_mean, np.add(full_covariance, np.multiply(h/M, np.identity(d))))
 		def mix_weight_mapper(x):
-			return mult_norm(t[x[0]], full_mean, full_covariance)
+			return mult_norm(x[1][t[x[0]]], full_mean, full_covariance)
 		mixture_weight /= filtered_rdd.map(mix_weight_mapper).reduce(mul)
 		return mixture_weight, mixture_mean, mixture_cov
 
