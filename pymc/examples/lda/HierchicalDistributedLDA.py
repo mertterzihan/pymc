@@ -209,12 +209,11 @@ def step_function(mcmc):
 	return mcmc
 
 from pymc.DistributedMCMC import DistributedMCMC
-from pyspark import SparkContext
 
 # The path of the txt file that was produced by the preprocess_nips.py script
 path = 'hdfs:///user/mert.terzihan/data/nips.txt'
 
-sc = SparkContext(appName='HD-LDA')
+sc.addPyFile('~/pymc/pymc.zip')
 
 m = DistributedMCMC(spark_context=sc, 
 					model_function=model_function, 
