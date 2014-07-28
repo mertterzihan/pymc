@@ -2,7 +2,7 @@
 Implementation of HD-LDA model that has been described in Distributed Algorithms 
 for Topic Models by D. Newman, et al. (2009).
 '''
-from numpy import randint
+from numpy.random import randint
 total_topics = 20
 # Seeds for global parameters, phi and beta, to enable synchronization between the jobs
 phi_seeds = randint(1000000, size=total_topics)
@@ -209,9 +209,12 @@ def step_function(mcmc):
 	return mcmc
 
 from pymc.DistributedMCMC import DistributedMCMC
+from pyspark import SparkContext
 
 # The path of the txt file that was produced by the preprocess_nips.py script
 path = 'hdfs:///user/mert.terzihan/data/nips.txt'
+
+sc = SparkContext(appName='HD-LDA')
 
 m = DistributedMCMC(spark_context=sc, 
 					model_function=model_function, 
