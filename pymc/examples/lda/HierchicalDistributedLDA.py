@@ -213,7 +213,7 @@ from pymc.DistributedMCMC import DistributedMCMC
 # The path of the txt file that was produced by the preprocess_nips.py script
 path = 'hdfs:///user/mert.terzihan/data/nips.txt'
 
-sc.addPyFile('~/pymc/pymc.zip')
+sc.addPyFile('/home/mert.terzihan/pymc/pymc.zip')
 
 m = DistributedMCMC(spark_context=sc, 
 					model_function=model_function, 
