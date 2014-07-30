@@ -43,6 +43,7 @@ __modules__ = [
     'hdf5ea',
     'hdfs',
     'spark',
+    'distributed_spark'
     "__test_import__",]
 
 from . import no_trace
@@ -51,6 +52,7 @@ from . import ram
 from . import pickle
 from . import hdfs
 from . import spark
+from . import distributed_spark
 
 try:
     from . import sqlite
