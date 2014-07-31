@@ -139,7 +139,7 @@ class DistributedMCMC(MCMCSpark):
 			else:
 				return list([a, b])
 		# Partition the data and generate a list of data assigned to each node
-		rdd = self.sc.textFile(observation_file, minPartitions=nJobs).mapPartitionsWithIndex(generate_keys).reduceByKey(generate_lists).cache()
+		rdd = self.sc.textFile(observation_file, minPartitions=nJobs).mapPartitionsWithIndex(generate_keys).reduceByKey(generate_lists)
 		current_iter = 0
 		while current_iter < self.total_iter:
 			# If the user has provided a global update function, execute it to synch the nodes
@@ -148,7 +148,7 @@ class DistributedMCMC(MCMCSpark):
 				global_param = self.sc.broadcast(param) # Broadcast the global parameters
 			else:
 				global_param = None
-			rdd = rdd.map(sample_on_spark).cache() # Run the local sampler
+			rdd = rdd.map(sample_on_spark) # Run the local sampler
 			current_iter += self.local_iter
 		rdd = rdd.map(lambda x: (x[0], x[2])).cache()
 		def extract_var_names(a,b):
