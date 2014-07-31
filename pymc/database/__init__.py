@@ -41,7 +41,7 @@ __modules__ = [
     'sqlite',
     'hdf5',
     'hdf5ea',
-    'hdfs',
+#    'hdfs',
     'spark',
     'distributed_spark'
     "__test_import__",]
@@ -50,7 +50,7 @@ from . import no_trace
 from . import txt
 from . import ram
 from . import pickle
-from . import hdfs
+#from . import hdfs
 from . import spark
 from . import distributed_spark
 
