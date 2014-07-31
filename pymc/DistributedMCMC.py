@@ -8,7 +8,7 @@ __all__ = ['DistributedMCMC']
 
 from .MCMCSpark import MCMCSpark
 from .MCMC import MCMC
-from . import database
+from .database import ram, distributed_spark
 
 class DistributedMCMC(MCMCSpark):
 
@@ -71,12 +71,12 @@ class DistributedMCMC(MCMCSpark):
 		def sample_on_spark(data):
 			# Load the database, so that MCMC can continue sampling from where it had concluded the previous local iteration
 			def load_ram_database(data_dict):
-				db = database.ram.Database('temp_database')
+				db = ram.Database('temp_database')
 				trace_names = list()
 				for key in data_dict.keys():
 					if key != '_state_':
 						trace_names.append(key)
-						db._traces[key] = database.ram.Trace(name=key, value={0:data_dict[key][-2:-1]}, db=db)
+						db._traces[key] = ram.Trace(name=key, value={0:data_dict[key][-2:-1]}, db=db)
 						setattr(db, key, db._traces[key])
 					else:
 						db._state_ = data_dict[key]
@@ -177,7 +177,7 @@ class DistributedMCMC(MCMCSpark):
 		'''
 		Assign distributed_spark RDD database
 		'''
-		self.db = database.distributed_spark.Database(db, vars_to_tally)
+		self.db = distributed_spark.Database(db, vars_to_tally)
 
 	def save_as_txt_file(self, path, chain=None):
 		'''
