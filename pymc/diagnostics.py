@@ -15,7 +15,8 @@ __all__ = [
     'raftery_lewis',
     'validate',
     'discrepancy',
-    'iat']
+    'iat',
+    'ppp_value']
 
 
 def open01(x, limit=1.e-6):
@@ -270,7 +271,7 @@ def geweke(x, first=.1, last=.5, intervals=20):
     if first + last >= 1:
         raise ValueError(
             "Invalid intervals for Geweke convergence analysis",
-            (first,last))
+            (first, last))
 
     # Initialize list of z-scores
     zscores = [None] * intervals
@@ -289,7 +290,10 @@ def geweke(x, first=.1, last=.5, intervals=20):
         last_slice = x_trunc[int(last * n):]
 
         z = (first_slice.mean() - last_slice.mean())
-        z /= np.sqrt(first_slice.var() / len(first_slice) + last_slice.var() / len(last_slice))
+        z /= np.sqrt(first_slice.var() /
+                     len(first_slice) +
+                     last_slice.var() /
+                     len(last_slice))
         zscores[i] = len(x) - len(x_trunc), z
 
         x_trunc = x_trunc[int(first * n):]
@@ -349,7 +353,8 @@ def raftery_lewis(x, q, r, s=.95, epsilon=.001, verbose=1):
         See the fortran source file `gibbsit.f` for more details and references.
     """
     if np.rank(x) > 1:
-        return [raftery_lewis(y, q, r, s, epsilon, verbose) for y in np.transpose(x)]
+        return [raftery_lewis(y, q, r, s, epsilon, verbose)
+                for y in np.transpose(x)]
 
     output = nmin, kthin, nburn, nprec, kmind = flib.gibbmain(
         x, q, r, s, epsilon)
@@ -616,3 +621,37 @@ def iat(x, maxlag=None):
         print_("Not enough lag to calculate IAT")
 
     return np.sum(2 * gammas[:cut + 1]) - 1.0
+
+
+@diagnostic()
+def ppp_value(simdata, trueval, round=3):
+    """
+    Calculates posterior predictive p-values on data simulated from the posterior
+     predictive distribution, returning the quantile of the observed data relative to
+     simulated.
+
+     The posterior predictive p-value is computed by:
+
+       .. math:: Pr(T(y^{\text{sim}} > T(y) | y)
+
+     where T is a test statistic of interest and :math:`y^{\text{sim}}` is the simulated
+     data.
+
+    :Arguments:
+        simdata: array or PyMC object
+            Trace of simulated data or the PyMC stochastic object containing trace.
+
+        trueval: numeric
+            True (observed) value of the data
+
+        round: int
+            Rounding of returned quantile (defaults to 3)
+
+    """
+
+    if ndim(trueval) == 1 and ndim(simdata == 2):
+        # Iterate over more than one set of data
+        return [post_pred_checks(simdata[:, i], trueval[i])
+                for i in range(len(trueval))]
+
+    return (simdata > trueval).mean()

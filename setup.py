@@ -90,11 +90,11 @@ config.add_extension(name='gp.cov_funs.distances',sources=['pymc/gp/cov_funs/dis
 
 if __name__ == '__main__':
     from numpy.distutils.core import setup
-    setup(  version="2.3.2",
+    setup(  version="2.3.4",
             description="Markov Chain Monte Carlo sampling toolkit.",
             author="Christopher Fonnesbeck, Anand Patil and David Huard",
             author_email="fonnesbeck@gmail.com ",
-            url="github.com/pymc-devs/pymc",
+            url="http://github.com/pymc-devs/pymc",
             license="Academic Free License",
             classifiers=[
                 'Development Status :: 5 - Production/Stable',

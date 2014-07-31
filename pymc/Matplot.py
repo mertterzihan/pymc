@@ -249,6 +249,7 @@ class centered_envelope(object):
 
     :SeeAlso: func_envelopes
     """
+
     def __init__(self, sorted_func_stack, mass):
         if mass < 0 or mass > 1:
             raise ValueError('mass must be between 0 and 1')
@@ -821,7 +822,7 @@ def gof_plot(
                 trueval[
                     i],
                 '%s[%i]' % (
-                n,
+                    n,
                     i),
                 bins=bins,
                 format=format,
@@ -1152,24 +1153,24 @@ def summary_plot(
 
         except AttributeError:
 
-            # Assume an iterable
-            vars = pymc_obj
+            if isinstance(pymc_obj, Variable):
+                vars = [pymc_obj]
+            else:
+                # Assume an iterable
+                vars = pymc_obj
 
     from .diagnostics import gelman_rubin
 
     # Calculate G-R diagnostics
     if rhat:
         try:
-            R = gelman_rubin(pymc_obj)
+            R = {}
+            for variable in vars:
+                R[variable.__name__] = gelman_rubin(variable)
         except (ValueError, TypeError):
-            try:
-                R = {}
-                for variable in vars:
-                    R[variable.__name__] = gelman_rubin(variable)
-            except ValueError:
-                print(
-                    'Could not calculate Gelman-Rubin statistics. Requires multiple chains of equal length.')
-                rhat = False
+            print(
+                'Could not calculate Gelman-Rubin statistics. Requires multiple chains of equal length.')
+            rhat = False
 
     # Empty list for y-axis labels
     labels = []
@@ -1404,7 +1405,7 @@ def summary_plot(
 
             if k > 1:
                 pyplot([min(r, 2) for r in R[varname]], [-(j + i)
-                       for j in range(k)], 'bo', markersize=4)
+                                                         for j in range(k)], 'bo', markersize=4)
             else:
                 pyplot(min(R[varname], 2), -i, 'bo', markersize=4)
 
