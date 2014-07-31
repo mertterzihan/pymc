@@ -47,7 +47,7 @@ from . import CommonDeterministics
 from . import NumpyDeterministics
 from .CircularStochastic import *
 from . import distributions
-from . import gp
+#from . import gp
 
 # Optional modules
 try:
