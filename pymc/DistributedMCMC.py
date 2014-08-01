@@ -126,7 +126,7 @@ class DistributedMCMC(MCMCSpark):
 			for i in iterator:
 				yield (splitIndex,i)
 
-		def generate_lists(a, b):
+		'''def generate_lists(a, b):
 			if isinstance(a, list):
 				if isinstance(b, list):
 					return a + b
@@ -137,9 +137,9 @@ class DistributedMCMC(MCMCSpark):
 				b.append(a)
 				return b
 			else:
-				return list([a, b])
+				return list([a, b])'''
 		# Partition the data and generate a list of data assigned to each node
-		rdd = self.sc.textFile(observation_file, minPartitions=nJobs).mapPartitionsWithIndex(generate_keys).reduceByKey(generate_lists)
+		rdd = self.sc.textFile(observation_file, minPartitions=nJobs).mapPartitionsWithIndex(generate_keys).groupByKey()
 		current_iter = 0
 		while current_iter < self.total_iter:
 			# If the user has provided a global update function, execute it to synch the nodes
