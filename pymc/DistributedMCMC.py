@@ -106,20 +106,19 @@ class DistributedMCMC(MCMCSpark):
 			if len(data) == 3:
 				import numpy as np
 				container_list = data[2]
-				index = container_list.index(None)
 				container = {}
 				for tname in m.db._traces:
 					container[tname] = m.trace(tname)[:]
 				container['_state_'] = m.get_state()
-				container_list[index] = container
+				container_list.append(container)
 				return (data[0], data[1], container_list)
 			else:
-				container_list = [None]*(iter/local_iter)
+				container_list = list()
 				container = {}
 				for tname in m.db._traces:
 					container[tname] = m.trace(tname)[:]
 				container['_state_'] = m.get_state()
-				container_list[0] = container
+				container_list.append(container)
 				return (data[0], data[1], container_list)
 
 		def generate_keys(splitIndex, iterator):
