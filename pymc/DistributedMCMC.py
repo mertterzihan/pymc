@@ -42,6 +42,8 @@ class DistributedMCMC(MCMCSpark):
 		self.local_iter = kwargs.pop("local_iter", None)
 		self.global_update = kwargs.pop("global_update", None)
 		self.step_function = kwargs.pop("step_function", None)
+		self.data_process = kwargs.pop("data_process", None)
+		self.sample_return = kwargs.pop("sample_return", None)
 		MCMCSpark.__init__(self, input=None, db=db, name=name, calc_deviance=calc_deviance, nJobs=nJobs, **kwargs)
 
 	def sample(
@@ -63,6 +65,7 @@ class DistributedMCMC(MCMCSpark):
 		local_iter = self.local_iter
 		nJobs = self.nJobs
 		self.total_iter = iter
+		sample_return = self.sample_return
 		#total_iter = self.total_iter
 		step_function = None
 		if self.step_function is not None:
@@ -76,19 +79,19 @@ class DistributedMCMC(MCMCSpark):
 				for key in data_dict.keys():
 					if key != '_state_':
 						trace_names.append(key)
-						db._traces[key] = ram.Trace(name=key, value={0:data_dict[key][-2:-1]}, db=db)
+						db._traces[key] = ram.Trace(name=key, db=db)
 						setattr(db, key, db._traces[key])
 					else:
 						db._state_ = data_dict[key]
 				db.trace_names.append(trace_names)
 				return db
 
-			if global_update is None:
-				input_model = model_function(data[1], global_param)
+			if global_param is None:
+				input_model = model_function(data, global_param)
 			else:
-				input_model = model_function(data[1], global_param.value)
-			if len(data) == 3: # If this method has been run in a previous iteration, so that MCMC should be loaded
-				index = data[2].index(None)
+				input_model = model_function(data, global_param.value)
+			if len(data) > 2: # If this method has been run in a previous iteration, so that MCMC should be loaded
+				index = len(data[2])
 				m = MCMC(input_model, db=load_ram_database(data[2][index-1]), name=name, calc_deviance=calc_deviance, **kwargs)
 			else: # If this is the first iteration
 				m = MCMC(input_model, db='ram', name=name, calc_deviance=calc_deviance, **kwargs)
@@ -103,7 +106,7 @@ class DistributedMCMC(MCMCSpark):
 			# TODO: Local Update
 
 			# Create or update the dictionary
-			if len(data) == 3:
+			if len(data) > 2:
 				import numpy as np
 				container_list = data[2]
 				container = {}
@@ -111,7 +114,10 @@ class DistributedMCMC(MCMCSpark):
 					container[tname] = m.trace(tname)[:]
 				container['_state_'] = m.get_state()
 				container_list.append(container)
-				return (data[0], data[1], container_list)
+				if sample_return is None:
+					return (data[0], data[1], container_list)
+				else:
+					return (data[0], data[1], container_list, sample_return(m))
 			else:
 				container_list = list()
 				container = {}
@@ -119,34 +125,28 @@ class DistributedMCMC(MCMCSpark):
 					container[tname] = m.trace(tname)[:]
 				container['_state_'] = m.get_state()
 				container_list.append(container)
-				return (data[0], data[1], container_list)
+				if sample_return is None:
+					return (data[0], data[1], container_list)
+				else:
+					return (data[0], data[1], container_list, sample_return(m))
 
 		def generate_keys(splitIndex, iterator):
 			for i in iterator:
 				yield (splitIndex,i)
 
-		'''def generate_lists(a, b):
-			if isinstance(a, list):
-				if isinstance(b, list):
-					return a + b
-				else:
-					a.append(b)
-					return a
-			elif isinstance(b, list):
-				b.append(a)
-				return b
-			else:
-				return list([a, b])'''
 		# Partition the data and generate a list of data assigned to each node
 		rdd = self.sc.textFile(observation_file, minPartitions=nJobs).mapPartitionsWithIndex(generate_keys).groupByKey()
+		if self.data_process is not None:
+			data_process = self.data_process
+			rdd = rdd.map(data_process)
 		current_iter = 0
 		while current_iter < self.total_iter:
 			# If the user has provided a global update function, execute it to synch the nodes
-			if self.global_update is not None:
-				param = self.global_update[1]()
-				global_param = self.sc.broadcast(param) # Broadcast the global parameters
-			else:
+			if current_iter == 0 or self.global_update is None:
 				global_param = None
+			else:
+				param = self.global_update(rdd)
+				global_param = self.sc.broadcast(param) # Broadcast the global parameters
 			rdd = rdd.map(sample_on_spark) # Run the local sampler
 			current_iter += self.local_iter
 		rdd = rdd.map(lambda x: (x[0], x[2])).cache()

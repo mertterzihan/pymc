@@ -83,10 +83,9 @@ class Trace():
 		tname = self.name
 		if chain is None:
 			def map_helper(x):
-				from numpy import concatenate
-				result = x[1][0][tname][index]
-				for collection in x[1][1:]:
-					result = concatenate(result, collection[tname][index])
+				result = list()
+				for collection in x[1]:
+					result.append(result, collection[tname][index])
 				return result
 			result = self.db.rdd.filter(lambda x: tname in x[1][0]).map(map_helper).collect()
 			if type(result) is list and len(result) == 1:
