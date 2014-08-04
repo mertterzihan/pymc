@@ -85,7 +85,7 @@ class Trace():
 			def map_helper(x):
 				result = list()
 				for collection in x[1]:
-					result.append(result, collection[tname][index])
+					result.append(collection[tname][index])
 				return result
 			result = self.db.rdd.filter(lambda x: tname in x[1][0]).map(map_helper).collect()
 			if type(result) is list and len(result) == 1:
