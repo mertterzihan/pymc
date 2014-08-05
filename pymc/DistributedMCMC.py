@@ -44,6 +44,7 @@ class DistributedMCMC(MCMCSpark):
 		self.step_function = kwargs.pop("step_function", None)
 		self.data_process = kwargs.pop("data_process", None)
 		self.sample_return = kwargs.pop("sample_return", None)
+		self.save_traces = kwargs.pop("save_traces", None)
 		MCMCSpark.__init__(self, input=None, db=db, name=name, calc_deviance=calc_deviance, nJobs=nJobs, **kwargs)
 
 	def sample(
@@ -111,13 +112,10 @@ class DistributedMCMC(MCMCSpark):
 				container_list = data[2]
 				container = {}
 				for tname in m.db._traces:
-					container[tname] = m.trace(tname)[:]
+					container[tname] = m.trace(tname, chain=None)[:]
 				container['_state_'] = m.get_state()
 				container_list.append(container)
-				if sample_return is None:
-					return (data[0], data[1], container_list)
-				else:
-					return (data[0], data[1], container_list, sample_return(m))
+				return_data = (data[0], data[1], container_list)
 			else:
 				container_list = list()
 				container = {}
@@ -125,10 +123,11 @@ class DistributedMCMC(MCMCSpark):
 					container[tname] = m.trace(tname)[:]
 				container['_state_'] = m.get_state()
 				container_list.append(container)
-				if sample_return is None:
-					return (data[0], data[1], container_list)
-				else:
-					return (data[0], data[1], container_list, sample_return(m))
+				return_data = (data[0], data[1], container_list)
+			if sample_return is not None:
+				return_data += sample_return(m)
+			return return_data
+
 
 		def generate_keys(splitIndex, iterator):
 			for i in iterator:
@@ -148,6 +147,19 @@ class DistributedMCMC(MCMCSpark):
 				param = self.global_update(rdd)
 				global_param = self.sc.broadcast(param) # Broadcast the global parameters
 			rdd = rdd.map(sample_on_spark) # Run the local sampler
+			if self.save_traces is not None:
+				self.save_traces(rdd, current_iter, self.local_iter)
+				def mapper(x):
+					d = dict()
+					for key in x[2][0].keys():
+						if key == '_state_':
+							d[key] = x[2][0][key]
+						else:
+							d[key] = None
+					if len(x) == 3:
+						return (x[0], x[1], d)
+					else:
+						return (x[0], x[1], d, x[3])
 			current_iter += self.local_iter
 		rdd = rdd.map(lambda x: (x[0], x[2])).cache()
 		def extract_var_names(a,b):
@@ -177,6 +189,7 @@ class DistributedMCMC(MCMCSpark):
 		Assign distributed_spark RDD database
 		'''
 		self.db = distributed_spark.Database(db, vars_to_tally)
+
 
 	def save_as_txt_file(self, path, chain=None):
 		'''

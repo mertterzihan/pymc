@@ -23,9 +23,11 @@ def model_function(data, global_param):
 	current_state = np.random.get_state()
 	np.random.seed(seed)
 	initial_values = list()
+	doc_indices = list()
 	for doc in data[1]:
 		doc_values = np.random.randint(total_topics, size=len(doc[1]))
 		initial_values.append(doc_values)
+		doc_indices.append(doc[0])
 	np.random.set_state(current_state)
 	
 	def logp(value, **kwargs):
@@ -44,7 +46,8 @@ def model_function(data, global_param):
 								 'alpha' : alpha,
 								 'beta' : beta,
 								 'total_topics' : total_topics,
-								 'topic_word_counts' : topic_word_counts},
+								 'topic_word_counts' : topic_word_counts,
+								 'doc_indices' : doc_indices},
 						value=initial_values,
 						dtype=list)
 
@@ -71,6 +74,8 @@ def step_function(mcmc):
 			self.docs = self.stochastic.parents['documents']
 			self.total_topics = self.stochastic.parents['total_topics']
 			self.topic_word_counts = self.stochastic.parents['topic_word_counts']
+			self.doc_indices = self.stochastic.parents['doc_indices']
+			#self.global_document_topic_counts = np.zeros((len(self.docs), self.total_topics))
 
 			if self.topic_word_counts is None:
 				self.topic_word_counts = np.zeros((self.total_topics, self.vocab_length))
@@ -136,6 +141,7 @@ def step_function(mcmc):
 					doc_topic_assignments[word_index] = topic_assignment
 				new_assignments.append(doc_topic_assignments)
 			self.stochastic.value = new_assignments
+			#self.global_document_topic_counts += self.document_topic_counts
 
 	import re
 	pattern = re.compile('z_')
@@ -145,15 +151,15 @@ def step_function(mcmc):
 	return mcmc
 
 def global_update(rdd):
-	from numpy import add
 	import numpy as np
-	result = rdd.map(lambda x: x[3]).reduce(add)
-	for column in xrange(result.shape[1]):
-		pos_indices = result[:,column] > 0
-		if pos_indices.all():
-			total = np.sum(result[np.invert(pos_indices),column])
-			result[pos_indices,column] -= (total/result[pos_indices,column].shape[0])
-			result[np.invert(pos_indices),column] = 0
+	result = rdd.map(lambda x: x[3]).reduce(np.add)
+	for col in xrange(result.shape[1]):
+		pos_indices = result[:,col] > 0
+		if not pos_indices.all():
+			inverse_indices = np.invert(pos_indices)
+			total = np.sum(result[inverse_indices, col])
+			result[pos_indices,col] -= (total/result[pos_indices,col].shape[0])
+			result[inverse_indices, col] = 0
 	return result
 
 def sample_return(mcmc):
@@ -165,7 +171,38 @@ def sample_return(mcmc):
 	beta = 0.01
 	topic_word_counts = np.subtract(step_method.topic_word_counts, beta)
 	old_topic_word_counts = np.subtract(step_method.old_topic_word_counts, beta)
-	return np.subtract(topic_word_counts, np.multiply(float(total_partitions-1)/total_partitions, old_topic_word_counts))
+	return tuple([np.subtract(topic_word_counts, np.multiply(float(total_partitions-1)/total_partitions, old_topic_word_counts)), step_method.doc_indices])
+
+def save_traces(rdd, current_iter, local_iter):
+	import datetime
+	import os
+	import numpy as np
+	from numpy.compat import asstr
+	path='/Users/mert.terzihan/Desktop/temp'
+	tmp_rdd = rdd.map(lambda x: (x[0], x[2][0], x[4]))
+
+	for chain in xrange(local_iter):
+		def save_mapper(spark_data):
+			import re
+			import StringIO
+			pattern = re.compile('z_')
+			to_save = ''
+			variables = [var for var in spark_data[1].keys() if pattern.match(var)]
+			for var in variables:
+				for local_chain in spark_data[1][var]:
+					x = (spark_data[0], local_chain)
+					for n, doc in enumerate(x[1]):
+						data = '# Variable: %s\n' % x[2][n]
+						data += '# Partition: %s\n' % x[0]
+						data += '# Sample shape: %s\n' % str(x[1].shape)
+						data += '# Date: %s\n' % datetime.datetime.now()
+						s = StringIO.StringIO()
+						np.savetxt(s, doc[1].reshape((-1, doc[1][0].size)), delimiter=',')
+						to_save += data + s.getvalue() + '\n'
+			return to_save
+
+		tmp_rdd.map(save_mapper).saveAsTextFile(os.path.join(path, str(current_iter/local_iter), str(chain)))
+	tmp_rdd.map(lambda x: (x[0], x[1]['_state_'])).saveAsTextFile(os.path.join(path, str(current_iter/local_iter), 'state'))
 
 
 from pymc.DistributedMCMC import DistributedMCMC
@@ -182,9 +219,10 @@ m = DistributedMCMC(spark_context=sc,
 					data_process=data_process, 
 					nJobs=total_partitions, 
 					observation_file=path, 
-					local_iter=1, 
+					local_iter=2, 
 					step_function=step_function,
 					global_update=global_update,
-					sample_return=sample_return)
+					sample_return=sample_return,
+					save_traces=save_traces)
 
-m.sample(3)
+m.sample(4)
