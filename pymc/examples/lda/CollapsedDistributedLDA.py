@@ -204,6 +204,7 @@ def save_traces(rdd, current_iter, local_iter):
 
 		tmp_rdd.map(save_mapper).saveAsTextFile(os.path.join(path, str(current_iter/local_iter), str(chain)))
 	tmp_rdd.map(lambda x: (x[0], x[1]['_state_'])).saveAsTextFile(os.path.join(path, str(current_iter/local_iter), 'state'))
+	tmp_rdd.unpersist()
 
 
 from pymc.DistributedMCMC import DistributedMCMC
