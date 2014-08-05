@@ -1,4 +1,4 @@
-total_partitions = 8
+total_partitions = 72
 seed = 123456
 
 def data_process(data):
@@ -15,7 +15,7 @@ def model_function(data, global_param):
 	import pymc
 	import numpy as np
 	
-	total_topics = 10
+	total_topics = 100
 	vocab_length = 4792
 	beta = 0.01
 	alpha = 0.1
@@ -178,7 +178,8 @@ def save_traces(rdd, current_iter, local_iter):
 	import os
 	import numpy as np
 	from numpy.compat import asstr
-	path='/Users/mert.terzihan/Desktop/temp'
+	#path='/Users/mert.terzihan/Desktop/temp'
+	path = '/user/mert.terzihan/temp/nips'
 	tmp_rdd = rdd.map(lambda x: (x[0], x[2][0], x[4]))
 
 	for chain in xrange(local_iter):
@@ -192,12 +193,12 @@ def save_traces(rdd, current_iter, local_iter):
 				for local_chain in spark_data[1][var]:
 					x = (spark_data[0], local_chain)
 					for n, doc in enumerate(x[1]):
-						data = '# Variable: %s\n' % x[2][n]
+						data = '# Variable: %s\n' % spark_data[2][n]
 						data += '# Partition: %s\n' % x[0]
 						data += '# Sample shape: %s\n' % str(x[1].shape)
 						data += '# Date: %s\n' % datetime.datetime.now()
 						s = StringIO.StringIO()
-						np.savetxt(s, doc[1].reshape((-1, doc[1][0].size)), delimiter=',')
+						np.savetxt(s, doc.reshape((-1, doc[0].size)), delimiter=',')
 						to_save += data + s.getvalue() + '\n'
 			return to_save
 
@@ -208,21 +209,21 @@ def save_traces(rdd, current_iter, local_iter):
 from pymc.DistributedMCMC import DistributedMCMC
 
 # The path of the txt file that was produced by the preprocess_nips.py script
-#path = '/user/mert.terzihan/data/nips.txt'
+path = '/user/mert.terzihan/data/nips.txt'
 #path = '/home/mert.terzihan/tmp/nips.txt'
-path = '/Users/mert.terzihan/Desktop/txt/nips.txt'
+#path = '/Users/mert.terzihan/Desktop/txt/nips.txt'
 
-#sc.addPyFile('/home/mert.terzihan/pymc/pymc/dist/pymc-2.3.4-py2.6-linux-x86_64.egg')
+sc.addPyFile('/home/mert.terzihan/pymc/pymc/dist/pymc-2.3.4-py2.6-linux-x86_64.egg')
 
 m = DistributedMCMC(spark_context=sc, 
 					model_function=model_function,
 					data_process=data_process, 
 					nJobs=total_partitions, 
 					observation_file=path, 
-					local_iter=2, 
+					local_iter=10, 
 					step_function=step_function,
 					global_update=global_update,
 					sample_return=sample_return,
 					save_traces=save_traces)
 
-m.sample(4)
+m.sample(2000)

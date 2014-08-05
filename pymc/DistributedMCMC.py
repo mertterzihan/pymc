@@ -107,7 +107,7 @@ class DistributedMCMC(MCMCSpark):
 			# TODO: Local Update
 
 			# Create or update the dictionary
-			if len(data) > 2:
+			if len(data) > 2 and self.save_traces is None:
 				import numpy as np
 				container_list = data[2]
 				container = {}
