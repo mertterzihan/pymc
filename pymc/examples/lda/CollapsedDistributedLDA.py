@@ -173,7 +173,7 @@ def sample_return(mcmc):
 	old_topic_word_counts = np.subtract(step_method.old_topic_word_counts, beta)
 	return tuple([np.subtract(topic_word_counts, np.multiply(float(total_partitions-1)/total_partitions, old_topic_word_counts)), step_method.doc_indices])
 
-def save_traces(rdd, current_iter, local_iter):
+def save_traces(rdd, old_rdd, current_iter, local_iter):
 	import datetime
 	import os
 	import numpy as np
@@ -205,6 +205,7 @@ def save_traces(rdd, current_iter, local_iter):
 		tmp_rdd.map(save_mapper).saveAsTextFile(os.path.join(path, str(current_iter/local_iter), str(chain)))
 	tmp_rdd.map(lambda x: (x[0], x[1]['_state_'])).saveAsTextFile(os.path.join(path, str(current_iter/local_iter), 'state'))
 	tmp_rdd.unpersist()
+	old_rdd.unpersist()
 
 
 from pymc.DistributedMCMC import DistributedMCMC
@@ -227,4 +228,4 @@ m = DistributedMCMC(spark_context=sc,
 					sample_return=sample_return,
 					save_traces=save_traces)
 
-m.sample(2000)
+m.sample(500)
