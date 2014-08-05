@@ -149,7 +149,7 @@ class DistributedMCMC(MCMCSpark):
 			else:
 				param = self.global_update(rdd)
 				global_param = self.sc.broadcast(param) # Broadcast the global parameters
-			rdd = rdd.map(sample_on_spark) # Run the local sampler
+			rdd = rdd.map(sample_on_spark).cache() # Run the local sampler
 			if self.save_traces is not None:
 				self.save_traces(rdd, current_iter, self.local_iter)
 				def mapper(x):
@@ -163,6 +163,7 @@ class DistributedMCMC(MCMCSpark):
 						return (x[0], x[1], d)
 					else:
 						return (x[0], x[1], d, x[3])
+				rdd = rdd.map(mapper)
 			current_iter += self.local_iter
 		rdd = rdd.map(lambda x: (x[0], x[2])).cache()
 		def extract_var_names(a,b):

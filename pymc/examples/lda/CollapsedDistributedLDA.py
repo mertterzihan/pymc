@@ -180,7 +180,7 @@ def save_traces(rdd, current_iter, local_iter):
 	from numpy.compat import asstr
 	#path='/Users/mert.terzihan/Desktop/temp'
 	path = '/user/mert.terzihan/temp/nips'
-	tmp_rdd = rdd.map(lambda x: (x[0], x[2][0], x[4]))
+	tmp_rdd = rdd.map(lambda x: (x[0], x[2][0], x[4])).cache()
 
 	for chain in xrange(local_iter):
 		def save_mapper(spark_data):
