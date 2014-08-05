@@ -69,6 +69,9 @@ class DistributedMCMC(MCMCSpark):
 		sample_return = self.sample_return
 		#total_iter = self.total_iter
 		step_function = None
+		dump_trace = True
+		if self.save_traces is None:
+			dump_trace = False
 		if self.step_function is not None:
 			step_function = self.step_function
 
@@ -107,7 +110,7 @@ class DistributedMCMC(MCMCSpark):
 			# TODO: Local Update
 
 			# Create or update the dictionary
-			if len(data) > 2 and self.save_traces is None:
+			if len(data) > 2 and not dump_trace:
 				import numpy as np
 				container_list = data[2]
 				container = {}
