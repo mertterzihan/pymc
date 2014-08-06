@@ -152,7 +152,8 @@ class DistributedMCMC(MCMCSpark):
 			if self.save_traces is not None:
 				old_rdd = rdd
 				rdd = rdd.map(sample_on_spark).cache() # Run the local sampler
-				self.save_traces(rdd, old_rdd, current_iter, self.local_iter)
+				self.save_traces(rdd, current_iter, self.local_iter)
+				old_rdd.unpersist()
 				def mapper(x):
 					d = dict()
 					for key in x[2][0].keys():

@@ -1,4 +1,4 @@
-total_partitions = 72
+total_partitions = 6
 seed = 123456
 
 def data_process(data):
@@ -107,7 +107,7 @@ def step_function(mcmc):
 		def step(self):
 			new_assignments = list()
 			for doc_index, doc in enumerate(self.docs):
-				doc_topic_assignments = np.zeros(len(doc[1]))
+				doc_topic_assignments = np.zeros(len(doc[1]), dtype=int)
 				for word_index, word in enumerate(doc[1]):
 					prev_assignment = self.stochastic.value[doc_index][word_index]
 					if self.topic_word_counts[prev_assignment, word] < 1:
@@ -173,7 +173,7 @@ def sample_return(mcmc):
 	old_topic_word_counts = np.subtract(step_method.old_topic_word_counts, beta)
 	return tuple([np.subtract(topic_word_counts, np.multiply(float(total_partitions-1)/total_partitions, old_topic_word_counts)), step_method.doc_indices])
 
-def save_traces(rdd, old_rdd, current_iter, local_iter):
+def save_traces(rdd, current_iter, local_iter):
 	import datetime
 	import os
 	import numpy as np
@@ -205,7 +205,6 @@ def save_traces(rdd, old_rdd, current_iter, local_iter):
 		tmp_rdd.map(save_mapper).saveAsTextFile(os.path.join(path, str(current_iter/local_iter), str(chain)))
 	tmp_rdd.map(lambda x: (x[0], x[1]['_state_'])).saveAsTextFile(os.path.join(path, str(current_iter/local_iter), 'state'))
 	tmp_rdd.unpersist()
-	old_rdd.unpersist()
 
 
 from pymc.DistributedMCMC import DistributedMCMC
@@ -222,7 +221,7 @@ m = DistributedMCMC(spark_context=sc,
 					data_process=data_process, 
 					nJobs=total_partitions, 
 					observation_file=path, 
-					local_iter=10, 
+					local_iter=1, 
 					step_function=step_function,
 					global_update=global_update,
 					sample_return=sample_return,
