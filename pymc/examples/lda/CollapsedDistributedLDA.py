@@ -1,7 +1,8 @@
-total_partitions = 6
+total_partitions = 72
 seed = 123456
 
 def data_process(data):
+	# Preprocess the data
 	docs = list()
 	# Given the data as a list of strings (lines), structure it in such a way that it can be used by the below model
 	for line in data[1]:
@@ -15,29 +16,28 @@ def model_function(data, global_param):
 	import pymc
 	import numpy as np
 	
-	total_topics = 100
+	total_topics = 150
 	vocab_length = 4792
 	beta = 0.01
 	alpha = 0.1
 
-	current_state = np.random.get_state()
-	np.random.seed(seed)
+	# Create initial values for topic assignments
 	initial_values = list()
 	doc_indices = list()
 	for doc in data[1]:
 		doc_values = np.random.randint(total_topics, size=len(doc[1]))
 		initial_values.append(doc_values)
 		doc_indices.append(doc[0])
-	np.random.set_state(current_state)
 	
 	def logp(value, **kwargs):
 		return 1
 
-	if global_param is None:
+	if global_param is None: # First iteration
 		topic_word_counts = None
 	else:
 		topic_word_counts = global_param
-		
+	
+	# Latent variable, topic assignments for each word in the local corpus
 	z = pymc.Stochastic(logp=logp,
 						doc='',
 						name='z_%i' % data[0],
@@ -58,6 +58,7 @@ def step_function(mcmc):
 	import numpy as np 
 
 	class CollapsedGibbs(pymc.Metropolis):
+		# Collapsed Gibbs step method
 		def __init__(self, stochastic, scale=1., proposal_sd=None, proposal_distribution=None, 
 					 positive=True, verbose=-1, tally=True):
 			pymc.Metropolis.__init__(self,
@@ -68,6 +69,7 @@ def step_function(mcmc):
 								   verbose=verbose,
 								   tally=tally)
 
+			# Extract parents
 			self.alpha = self.stochastic.parents['alpha']
 			self.beta = self.stochastic.parents['beta']
 			self.vocab_length = self.stochastic.parents['vocab_length']
@@ -75,9 +77,8 @@ def step_function(mcmc):
 			self.total_topics = self.stochastic.parents['total_topics']
 			self.topic_word_counts = self.stochastic.parents['topic_word_counts']
 			self.doc_indices = self.stochastic.parents['doc_indices']
-			#self.global_document_topic_counts = np.zeros((len(self.docs), self.total_topics))
 
-			if self.topic_word_counts is None:
+			if self.topic_word_counts is None: # If it is the first iteration
 				self.topic_word_counts = np.zeros((self.total_topics, self.vocab_length))
 				self.topic_counts = np.zeros(self.total_topics)
 				self.document_topic_counts = np.zeros((len(self.docs), self.total_topics))
@@ -105,6 +106,7 @@ def step_function(mcmc):
 			self.old_topic_word_counts = self.topic_word_counts
 
 		def step(self):
+			# Update topic assignments to each word
 			new_assignments = list()
 			for doc_index, doc in enumerate(self.docs):
 				doc_topic_assignments = np.zeros(len(doc[1]), dtype=int)
@@ -141,7 +143,6 @@ def step_function(mcmc):
 					doc_topic_assignments[word_index] = topic_assignment
 				new_assignments.append(doc_topic_assignments)
 			self.stochastic.value = new_assignments
-			#self.global_document_topic_counts += self.document_topic_counts
 
 	import re
 	pattern = re.compile('z_')
@@ -151,6 +152,7 @@ def step_function(mcmc):
 	return mcmc
 
 def global_update(rdd):
+	# Combine the topic word counts from each executor to synchronize them
 	import numpy as np
 	result = rdd.map(lambda x: x[3]).reduce(np.add)
 	for col in xrange(result.shape[1]):
@@ -163,6 +165,7 @@ def global_update(rdd):
 	return result
 
 def sample_return(mcmc):
+	# Besides the values returned after completing main mapper function, return topic-word counts to do global update
 	import re
 	import numpy as np
 	pattern = re.compile('z_')
@@ -174,12 +177,12 @@ def sample_return(mcmc):
 	return tuple([np.subtract(topic_word_counts, np.multiply(float(total_partitions-1)/total_partitions, old_topic_word_counts)), step_method.doc_indices])
 
 def save_traces(rdd, current_iter, local_iter):
+	# Dump the traces to HDFS as txt files, instead of storing them in the main memory
 	import datetime
 	import os
 	import numpy as np
 	from numpy.compat import asstr
-	#path='/Users/mert.terzihan/Desktop/temp'
-	path = '/user/mert.terzihan/temp/nips'
+	path = '/user/mert.terzihan/temp/nips150'
 	tmp_rdd = rdd.map(lambda x: (x[0], x[2][0], x[4])).cache()
 
 	for chain in xrange(local_iter):
@@ -211,9 +214,8 @@ from pymc.DistributedMCMC import DistributedMCMC
 
 # The path of the txt file that was produced by the preprocess_nips.py script
 path = '/user/mert.terzihan/data/nips.txt'
-#path = '/home/mert.terzihan/tmp/nips.txt'
-#path = '/Users/mert.terzihan/Desktop/txt/nips.txt'
 
+# PyMC egg distribution to be sent to each executor
 sc.addPyFile('/home/mert.terzihan/pymc/pymc/dist/pymc-2.3.4-py2.6-linux-x86_64.egg')
 
 m = DistributedMCMC(spark_context=sc, 
@@ -227,4 +229,4 @@ m = DistributedMCMC(spark_context=sc,
 					sample_return=sample_return,
 					save_traces=save_traces)
 
-m.sample(500)
+m.sample(400)

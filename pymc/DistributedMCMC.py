@@ -35,7 +35,15 @@ class DistributedMCMC(MCMCSpark):
 			- local_iter : int
 				Number of iterations that local sampler will be run
 			- global_update : function
-				A wrapper function which updates the global parameters
+				A wrapper function which takes rdd as a parameter and updates the global parameters
+			- step_function : function
+				A function that takes an mcmc instance as a parameter and returns an instance with updated step methods
+			- data_process : function
+				A function which enables the user to preprocess the data, instead of processing it in each iteration
+			- sample_return : function
+				A function that appends custom data to the returned object from the main mapper that performs sampling
+			- save_traces : function
+				It enables user to dump the traces to HDFS after each global iteration instead of storing them in memory
 		'''
 		self.model_function = kwargs.pop("model_function", None)
 		self.observation_file = kwargs.pop("observation_file", None)
