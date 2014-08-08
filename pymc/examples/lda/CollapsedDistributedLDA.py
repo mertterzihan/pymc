@@ -1,5 +1,4 @@
 total_partitions = 72
-seed = 123456
 
 def data_process(data):
 	# Preprocess the data
