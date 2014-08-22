@@ -237,8 +237,8 @@ def save_nparray_to_hdfs(fname, X, hdfs):
 	n_fmt_chars = fmt.count('%')
 	fmt = [fmt, ] * ncol
 	format = delimiter.join(fmt)
-	for row in X:	
-		hdfs.append_file(fname, asbytes(format % tuple(row) + newline))
+	output_strings = [asbytes(format % tuple(row) + newline) for row in X]
+	hdfs.append_file(fname, ''.join(output_strings))
 
 def print_state(*args, **kwargs):
 	'''
