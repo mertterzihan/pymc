@@ -43,8 +43,9 @@ __modules__ = [
     'hdf5ea',
     'hdfs',
     'spark',
-    'distributed_spark'
-    "__test_import__",]
+    'distributed_spark',
+    "__test_import__",
+    ]
 
 from . import no_trace
 from . import txt
