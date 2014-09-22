@@ -56,14 +56,10 @@ class TestBase(TestCase):
             pass
 
     def NDstoch(self):
-        nd = pymc.Normal(
-            'nd',
-            value=np.ones((2,
-                           2,
-                           )) * .5,
-            mu=np.ones((2,
-                        2)),
-            tau=1)
+        nd = pymc.Normal('nd',
+                value=np.ones((2, 2,)) * .5,
+                mu=np.ones((2, 2)),
+                tau=1)
         return nd
 
 
@@ -81,11 +77,7 @@ class TestRam(TestBase):
 
         assert_array_equal(self.S.trace('early_mean')[:].shape, (5,))
         assert_array_equal(self.S.trace('early_mean', chain=0)[:].shape, (5,))
-        assert_array_equal(
-            self.S.trace('early_mean',
-                         chain=None)[:].shape,
-            (5,
-             ))
+        assert_array_equal(self.S.trace('early_mean', chain=None)[:].shape, (5,))
 
         assert_equal(self.S.trace('early_mean').length(), 5)
         assert_equal(self.S.trace('early_mean').length(chain=0), 5)
@@ -95,11 +87,7 @@ class TestRam(TestBase):
 
         assert_array_equal(self.S.trace('early_mean')[:].shape, (10,))
         assert_array_equal(self.S.trace('early_mean', chain=1)[:].shape, (10,))
-        assert_array_equal(
-            self.S.trace('early_mean',
-                         chain=None)[:].shape,
-            (15,
-             ))
+        assert_array_equal(self.S.trace('early_mean', chain=None)[:].shape, (15,))
 
         assert_equal(self.S.trace('early_mean').length(), 10)
         assert_equal(self.S.trace('early_mean').length(chain=1), 10)
@@ -108,47 +96,22 @@ class TestRam(TestBase):
         assert_equal(self.S.trace('early_mean')[:].__class__, np.ndarray)
 
         # Test __getitem__
-        assert_equal(
-            self.S.trace(
-                'early_mean').gettrace(
-                    slicing=slice(
-                        1,
-                        2)),
-            self.S.early_mean.trace[
-                1])
+        assert_equal(self.S.trace('early_mean').gettrace(slicing=slice(1,2)),
+                self.S.early_mean.trace[1])
 
         # Test __getslice__
-        assert_array_equal(
-            self.S.trace(
-                'early_mean').gettrace(
-                    thin=2),
-            self.S.early_mean.trace[
-                ::2])
+        assert_array_equal(self.S.trace('early_mean').gettrace(thin=2),
+                self.S.early_mean.trace[::2])
 
         # Test Sampler trace method
         assert_array_equal(self.S.trace('early_mean')[:].shape, (10,))
         assert_array_equal(self.S.trace('early_mean', chain=0)[:].shape, (5,))
         assert_array_equal(self.S.trace('early_mean', chain=1)[:].shape, (10,))
-        assert_array_equal(
-            self.S.trace('early_mean',
-                         chain=1)[::2].shape,
-            (5,
-             ))
-        assert_array_equal(
-            self.S.trace('early_mean',
-                         chain=1)[1::].shape,
-            (9,
-             ))
-        assert_array_equal(
-            self.S.trace('early_mean',
-                         chain=1)[0],
-            self.S.trace('early_mean',
-                         chain=1)[:][0])
-        assert_array_equal(
-            self.S.trace('early_mean',
-                         chain=None)[:].shape,
-            (15,
-             ))
+        assert_array_equal(self.S.trace('early_mean', chain=1)[::2].shape, (5,))
+        assert_array_equal(self.S.trace('early_mean', chain=1)[1::].shape, (9,))
+        assert_array_equal(self.S.trace('early_mean', chain=1)[0], 
+                self.S.trace('early_mean', chain=1)[:][0])
+        assert_array_equal(self.S.trace('early_mean', chain=None)[:].shape, (15,))
 
         # Test internal state
         t1 = self.S.trace('early_mean', 0)
@@ -199,11 +162,7 @@ class TestPickle(TestRam):
             S.use_step_method(pymc.Metropolis, S.late_mean, tally=True)
             S.sample(5, progress_bar=0)
             assert_array_equal(db.trace('early_mean', chain=-1)[:].shape, (5,))
-            assert_array_equal(
-                db.trace('early_mean',
-                         chain=None)[:].shape,
-                (20,
-                 ))
+            assert_array_equal(db.trace('early_mean', chain=None)[:].shape, (20,))
             db.close()
         finally:
             warnings.filters = original_filters
@@ -249,19 +208,13 @@ class TestPickle(TestRam):
         M = MCMC(
             [self.NDstoch()],
             db=self.name,
-            dbname=os.path.join(testdir,
-                                'ND.' + self.name),
+            dbname=os.path.join(testdir, 'ND.' + self.name),
             dbmode='w')
         M.sample(10, progress_bar=0)
         a = M.trace('nd')[:]
         assert_equal(a.shape, (10, 2, 2))
-        db = getattr(
-            pymc.database,
-            self.name).load(
-                os.path.join(
-                    testdir,
-                    'ND.' +
-                    self.name))
+        db = getattr(pymc.database, self.name).load(
+                os.path.join(testdir, 'ND.' + self.name))
         assert_equal(db.trace('nd')[:], a)
 
 
@@ -296,30 +249,24 @@ class TestHDFS(TestPickle):
                            user_name=user_name)
 
     def load(self):
-        return pymc.database.hdfs.load(os.path.join(hdfsdir, 'Disaster.hdfs'), 
-                                       host=host, 
-                                       port=port, 
+        return pymc.database.hdfs.load(os.path.join(hdfsdir, 'Disaster.hdfs'),
+                                       host=host,
+                                       port=port,
                                        user_name=user_name)
 
     def test_nd(self):
         M = MCMC(
             [self.NDstoch()],
             db=self.name,
-            dbname=os.path.join(hdfsdir,
-                                'ND.' + self.name),
+            dbname=os.path.join(hdfsdir, 'ND.' + self.name),
             host=host,
             port=port,
             user_name=user_name)
         M.sample(10, progress_bar=0)
         a = M.trace('nd')[:]
         assert_equal(a.shape, (10, 2, 2))
-        db = getattr(
-            pymc.database,
-            self.name).load(
-                os.path.join(
-                    hdfsdir,
-                    'ND.' +
-                    self.name),
+        db = getattr(pymc.database, self.name).load(
+                os.path.join(hdfsdir, 'ND.' + self.name),
                 host=host,
                 port=port,
                 user_name=user_name)
